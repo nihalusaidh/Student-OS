@@ -144,6 +144,7 @@ function StudentOSApp({ user }) {
   const [connectedStudents, setConnectedStudents] = useState(() => JSON.parse(localStorage.getItem("studentOS_connectedStudents")) || []);
   const [selectedSocialProfile, setSelectedSocialProfile] = useState(null);
   const [compareSocialProfile, setCompareSocialProfile] = useState(null);
+  const [connectionRequests, setConnectionRequests] = useState([]);
 
   const [feedPosts, setFeedPosts] = useState([]);
   const [feedStatus, setFeedStatus] = useState("loading");
@@ -229,6 +230,7 @@ function StudentOSApp({ user }) {
     setConnectedStudents([]);
     setSelectedSocialProfile(null);
     setCompareSocialProfile(null);
+    setConnectionRequests([]);
     setFeedPosts([]);
     setFeedStatus("loading");
     setLeaderboardStatus("loading");
@@ -418,92 +420,162 @@ function StudentOSApp({ user }) {
   useEffect(() => {
     if (!user?.uid) return;
 
-    const socialRef = doc(db, "users", user.uid, "studentOS", "social");
+    const requestsQuery = query(
+      collection(db, "connectionRequests"),
+      orderBy("updatedAt", "desc")
+    );
+
     const unsubscribe = onSnapshot(
-      socialRef,
+      requestsQuery,
       (snapshot) => {
-        const data = snapshot.data();
-        if (Array.isArray(data?.following)) {
-          setFollowingIds(data.following);
-        }
-        if (Array.isArray(data?.connectedProfiles)) {
-          setConnectedStudents(data.connectedProfiles);
-        }
+        const rows = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .filter((item) => Array.isArray(item.users) && item.users.includes(user.uid));
+
+        setConnectionRequests(rows);
+
+        const accepted = rows.filter((item) => item.status === "accepted");
+        const acceptedIds = accepted.map((item) => (item.fromUid === user.uid ? item.toUid : item.fromUid));
+        const acceptedProfiles = accepted.map((item) => {
+          const isSender = item.fromUid === user.uid;
+          return {
+            id: isSender ? item.toUid : item.fromUid,
+            displayName: isSender ? item.toName : item.fromName,
+            email: isSender ? item.toEmail : item.fromEmail,
+            photoURL: isSender ? item.toPhotoURL : item.fromPhotoURL,
+            degree: isSender ? item.toDegree : item.fromDegree,
+            department: isSender ? item.toDepartment : item.fromDepartment,
+            year: isSender ? item.toYear : item.fromYear,
+            college: isSender ? item.toCollege : item.fromCollege,
+            country: isSender ? item.toCountry : item.fromCountry,
+            username: isSender ? item.toUsername : item.fromUsername,
+            score: Number(isSender ? item.toScore || 0 : item.fromScore || 0),
+            rank: isSender ? item.toRank || null : item.fromRank || null,
+            connectedAt: item.acceptedAt || item.updatedAt || "",
+          };
+        });
+
+        setFollowingIds(acceptedIds);
+        setConnectedStudents(acceptedProfiles);
       },
       (error) => {
-        console.error("Social sync error:", error);
+        console.error("Connection requests sync error:", error);
       }
     );
 
     return unsubscribe;
   }, [user?.uid]);
 
+  const getConnectionRequestId = (uidA, uidB) => [uidA, uidB].sort().join("_");
+
   const followStudent = async (student) => {
     if (!user?.uid || !student?.id || student.id === user.uid) return;
 
-    const contact = {
-      id: student.id,
-      displayName: student.displayName || "Student",
-      email: student.email || "Email not available",
-      photoURL: student.photoURL || "",
-      degree: student.degree || "",
-      department: student.department || student.degree || "",
-      year: student.year || "",
-      college: student.college || "",
-      country: student.country || "",
-      username: student.username || student.profileNameKey || "",
-      score: Number(student.score || 0),
-      rank: student.rank || null,
-      connectedAt: new Date().toISOString(),
-    };
-
-    setFollowingIds((prev) => (prev.includes(student.id) ? prev : [...prev, student.id]));
-    setConnectedStudents((prev) => {
-      const withoutExisting = prev.filter((item) => item.id !== student.id);
-      return [contact, ...withoutExisting];
-    });
-    showToast("Student Connected", `${contact.displayName} connected. Email: ${contact.email}`, "🤝");
+    const requestId = getConnectionRequestId(user.uid, student.id);
 
     try {
       await setDoc(
-        doc(db, "users", user.uid, "studentOS", "social"),
+        doc(db, "connectionRequests", requestId),
         {
-          following: arrayUnion(student.id),
-          connectedProfiles: arrayUnion(contact),
+          users: [user.uid, student.id],
+          fromUid: user.uid,
+          fromName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+          fromEmail: user?.email || "",
+          fromPhotoURL: user?.photoURL || "",
+          fromDegree: profile?.degree || "",
+          fromDepartment: profile?.department || profile?.degree || "",
+          fromYear: profile?.year || "",
+          fromCollege: profile?.college || "",
+          fromCountry: profile?.country || "",
+          fromUsername: profile?.username || profile?.profileNameKey || "",
+          fromScore: getLeaderboardScoreData().score,
+          fromRank: null,
+          toUid: student.id,
+          toName: student.displayName || "Student",
+          toEmail: student.email || "",
+          toPhotoURL: student.photoURL || "",
+          toDegree: student.degree || "",
+          toDepartment: student.department || student.degree || "",
+          toYear: student.year || "",
+          toCollege: student.college || "",
+          toCountry: student.country || "",
+          toUsername: student.username || student.profileNameKey || "",
+          toScore: Number(student.score || 0),
+          toRank: student.rank || null,
+          status: "pending",
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
+      showToast("Request Sent", `Connection request sent to ${student.displayName || "student"}.`, "🤝");
     } catch (error) {
-      console.error("Connect student error:", error);
-      showToast("Connect Failed", "Could not save connection. Try again.", "⚠️");
+      console.error("Send connection request error:", error);
+      showToast("Request Failed", "Could not send connection request. Try again.", "⚠️");
+    }
+  };
+
+  const acceptConnectionRequest = async (request) => {
+    if (!user?.uid || !request?.id || request.toUid !== user.uid) return;
+    try {
+      await setDoc(
+        doc(db, "connectionRequests", request.id),
+        {
+          status: "accepted",
+          acceptedAt: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      showToast("Connection Accepted", `${request.fromName || "Student"} is now connected with you.`, "✅");
+    } catch (error) {
+      console.error("Accept connection error:", error);
+      showToast("Accept Failed", "Could not accept the request. Try again.", "⚠️");
+    }
+  };
+
+  const rejectConnectionRequest = async (request) => {
+    if (!user?.uid || !request?.id || request.toUid !== user.uid) return;
+    try {
+      await setDoc(
+        doc(db, "connectionRequests", request.id),
+        {
+          status: "rejected",
+          rejectedAt: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      showToast("Request Rejected", "Connection request rejected.", "👋");
+    } catch (error) {
+      console.error("Reject connection error:", error);
+      showToast("Reject Failed", "Could not reject the request. Try again.", "⚠️");
     }
   };
 
   const unfollowStudent = async (student) => {
     if (!user?.uid || !student?.id || student.id === user.uid) return;
 
-    const nextConnected = connectedStudents.filter((item) => item.id !== student.id);
+    const requestId = getConnectionRequestId(user.uid, student.id);
     setFollowingIds((prev) => prev.filter((id) => id !== student.id));
-    setConnectedStudents(nextConnected);
-    showToast("Connection Removed", `${student.displayName || "Student"} removed from your connected students.`, "👋");
+    setConnectedStudents((prev) => prev.filter((item) => item.id !== student.id));
 
     try {
       await setDoc(
-        doc(db, "users", user.uid, "studentOS", "social"),
+        doc(db, "connectionRequests", requestId),
         {
-          following: arrayRemove(student.id),
-          connectedProfiles: nextConnected,
+          status: "removed",
+          removedAt: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
+      showToast("Connection Removed", `${student.displayName || "Student"} removed from your connected students.`, "👋");
     } catch (error) {
-      console.error("Unfollow student error:", error);
-      showToast("Update Failed", "Could not update following list. Try again.", "⚠️");
+      console.error("Remove connection error:", error);
+      showToast("Update Failed", "Could not remove connection. Try again.", "⚠️");
     }
   };
-
 
   const normalizeProfileName = (value) => {
     return String(value || "")
@@ -1694,8 +1766,11 @@ function StudentOSApp({ user }) {
                 user={user}
                 followingIds={followingIds}
                 connectedStudents={connectedStudents}
+                connectionRequests={connectionRequests}
                 followStudent={followStudent}
                 unfollowStudent={unfollowStudent}
+                acceptConnectionRequest={acceptConnectionRequest}
+                rejectConnectionRequest={rejectConnectionRequest}
                 setSelectedSocialProfile={setSelectedSocialProfile}
                 setCompareSocialProfile={setCompareSocialProfile}
                 currentScoreData={getLeaderboardScoreData()}
@@ -3000,7 +3075,7 @@ function FeedPostCard({ post, user, isDark, reactToFeedPost }) {
   );
 }
 
-function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, followingIds, connectedStudents, followStudent, unfollowStudent, setSelectedSocialProfile, setCompareSocialProfile, currentScoreData, currentProfile }) {
+function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, followingIds, connectedStudents, connectionRequests, followStudent, unfollowStudent, acceptConnectionRequest, rejectConnectionRequest, setSelectedSocialProfile, setCompareSocialProfile, currentScoreData, currentProfile }) {
   const [studentSearch, setStudentSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
   const [collegeFilter, setCollegeFilter] = useState("");
@@ -3055,8 +3130,19 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
       })
     : top100Students;
 
-  const followingRows = allStudents.filter((row) => followingIds.includes(row.id));
-  const suggestedRows = searchableStudents.filter((row) => !followingIds.includes(row.id));
+  const pendingReceivedRequests = (connectionRequests || []).filter((item) => item.toUid === user?.uid && item.status === "pending");
+  const pendingSentIds = new Set((connectionRequests || []).filter((item) => item.fromUid === user?.uid && item.status === "pending").map((item) => item.toUid));
+  const acceptedIds = new Set((connectionRequests || []).filter((item) => item.status === "accepted").map((item) => (item.fromUid === user?.uid ? item.toUid : item.fromUid)));
+
+  const getConnectionStatus = (row) => {
+    if (acceptedIds.has(row.id)) return "accepted";
+    if (pendingSentIds.has(row.id)) return "pending-sent";
+    if (pendingReceivedRequests.some((item) => item.fromUid === row.id)) return "pending-received";
+    return "none";
+  };
+
+  const followingRows = allStudents.filter((row) => acceptedIds.has(row.id));
+  const suggestedRows = searchableStudents.filter((row) => !acceptedIds.has(row.id));
   const topStudents = top100Students.slice(0, 6);
   const connectedRows = connectedStudents || [];
 
@@ -3076,7 +3162,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
               <Users className="text-blue-500" /> Student Network
             </h2>
             <p className="text-sm text-gray-500 mt-2 max-w-2xl">
-              Search students by profile name, connect with them, reveal email after connection, and compare XP, Study Buddy, streak, and kingdom growth.
+              Search students, send connection requests, reveal contact details only after acceptance, and compare XP, Study Buddy, streak, and kingdom growth.
             </p>
           </div>
           <div className={isDark ? "bg-blue-400/10 border border-blue-300/20 rounded-2xl p-4" : "bg-blue-50 border border-blue-200 rounded-2xl p-4"}>
@@ -3092,11 +3178,35 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
         <SocialMetric isDark={isDark} title="Your score" value={currentScoreData.score} sub="Compare with others" emoji="🏆" />
       </div>
 
+      {pendingReceivedRequests.length > 0 && (
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-xl font-bold">Connection Requests</h3>
+              <p className="text-sm text-gray-500">Accept only students you want to share contact access with.</p>
+            </div>
+            <span className="bg-yellow-500 text-white text-xs px-3 py-1 rounded-full font-bold">{pendingReceivedRequests.length} pending</span>
+          </div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {pendingReceivedRequests.map((request) => (
+              <div key={request.id} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
+                <p className="font-bold truncate">{request.fromName || "Student"}</p>
+                <p className="text-xs text-gray-500 truncate">{request.fromDepartment || request.fromDegree || "Student"} {request.fromYear ? `· Year ${request.fromYear}` : ""} {request.fromCollege ? `· ${request.fromCollege}` : ""}</p>
+                <div className="grid grid-cols-2 gap-2 mt-3 text-xs font-bold">
+                  <button onClick={() => acceptConnectionRequest(request)} className="bg-green-600 text-white py-2 rounded-xl">Accept</button>
+                  <button onClick={() => rejectConnectionRequest(request)} className="bg-gray-600 text-white py-2 rounded-xl">Reject</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className={`${cardClass} p-5 rounded-2xl`}>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-xl font-bold">Connected Students</h3>
-            <p className="text-sm text-gray-500">Emails are shown only for students you connect with, so you can contact them outside Student OS.</p>
+            <p className="text-sm text-gray-500">Emails are shown only after both students accept the connection request.</p>
           </div>
           <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold">{connectedRows.length} connected</span>
         </div>
@@ -3134,7 +3244,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
                   key={row.id}
                   isDark={isDark}
                   row={row}
-                  isFollowing
+                  connectionStatus="accepted"
                   onFollow={followStudent}
                   onUnfollow={unfollowStudent}
                   onView={() => setSelectedSocialProfile(row)}
@@ -3205,7 +3315,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
                   key={row.id}
                   isDark={isDark}
                   row={row}
-                  isFollowing={followingIds.includes(row.id)}
+                  connectionStatus={getConnectionStatus(row)}
                   onFollow={followStudent}
                   onUnfollow={unfollowStudent}
                   onView={() => setSelectedSocialProfile(row)}
@@ -3225,7 +3335,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
               key={`top-${row.id}`}
               isDark={isDark}
               row={row}
-              isFollowing={followingIds.includes(row.id)}
+              connectionStatus={getConnectionStatus(row)}
               onFollow={followStudent}
               onUnfollow={unfollowStudent}
               onView={() => setSelectedSocialProfile(row)}
@@ -3261,7 +3371,7 @@ function StudentAvatar({ row }) {
   );
 }
 
-function StudentSocialRow({ isDark, row, isFollowing, onFollow, onUnfollow, onView, onCompare }) {
+function StudentSocialRow({ isDark, row, connectionStatus = "none", onFollow, onUnfollow, onView, onCompare }) {
   return (
     <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
       <div className="flex items-center gap-3">
@@ -3275,15 +3385,19 @@ function StudentSocialRow({ isDark, row, isFollowing, onFollow, onUnfollow, onVi
       <div className="grid grid-cols-3 gap-2 mt-3 text-xs font-bold">
         <button onClick={onView} className="bg-blue-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"><Eye size={14} /> View</button>
         <button onClick={onCompare} className="bg-purple-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"><GitCompare size={14} /> Compare</button>
-        <button onClick={() => isFollowing ? onUnfollow(row) : onFollow(row)} className={isFollowing ? "bg-gray-600 text-white py-2 rounded-xl" : "bg-green-600 text-white py-2 rounded-xl"}>
-          {isFollowing ? "Connected" : "Connect"}
+        <button
+          onClick={() => connectionStatus === "accepted" ? onUnfollow(row) : connectionStatus === "none" ? onFollow(row) : null}
+          disabled={connectionStatus === "pending-sent" || connectionStatus === "pending-received"}
+          className={connectionStatus === "accepted" ? "bg-gray-600 text-white py-2 rounded-xl" : connectionStatus === "pending-sent" ? "bg-yellow-600 text-white py-2 rounded-xl opacity-80" : connectionStatus === "pending-received" ? "bg-blue-600 text-white py-2 rounded-xl opacity-80" : "bg-green-600 text-white py-2 rounded-xl"}
+        >
+          {connectionStatus === "accepted" ? "Connected" : connectionStatus === "pending-sent" ? "Request Sent" : connectionStatus === "pending-received" ? "Respond" : "Connect"}
         </button>
       </div>
     </motion.div>
   );
 }
 
-function StudentSocialCard({ isDark, row, isFollowing, onFollow, onUnfollow, onView, onCompare }) {
+function StudentSocialCard({ isDark, row, connectionStatus = "none", onFollow, onUnfollow, onView, onCompare }) {
   return (
     <motion.div whileHover={{ y: -4, scale: 1.01 }} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
       <div className="flex items-start gap-3">
@@ -3305,8 +3419,12 @@ function StudentSocialCard({ isDark, row, isFollowing, onFollow, onUnfollow, onV
       <div className="grid grid-cols-3 gap-2 mt-3 text-xs font-bold">
         <button onClick={onView} className="bg-blue-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"><Eye size={14} /> View</button>
         <button onClick={onCompare} className="bg-purple-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"><GitCompare size={14} /> Compare</button>
-        <button onClick={() => isFollowing ? onUnfollow(row) : onFollow(row)} className={isFollowing ? "bg-gray-600 text-white py-2 rounded-xl" : "bg-green-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"}>
-          {!isFollowing && <UserPlus size={14} />} {isFollowing ? "Connected" : "Connect"}
+        <button
+          onClick={() => connectionStatus === "accepted" ? onUnfollow(row) : connectionStatus === "none" ? onFollow(row) : null}
+          disabled={connectionStatus === "pending-sent" || connectionStatus === "pending-received"}
+          className={connectionStatus === "accepted" ? "bg-gray-600 text-white py-2 rounded-xl" : connectionStatus === "pending-sent" ? "bg-yellow-600 text-white py-2 rounded-xl opacity-80" : connectionStatus === "pending-received" ? "bg-blue-600 text-white py-2 rounded-xl opacity-80" : "bg-green-600 text-white py-2 rounded-xl flex items-center justify-center gap-1"}
+        >
+          {connectionStatus === "none" && <UserPlus size={14} />} {connectionStatus === "accepted" ? "Connected" : connectionStatus === "pending-sent" ? "Request Sent" : connectionStatus === "pending-received" ? "Respond" : "Connect"}
         </button>
       </div>
     </motion.div>
