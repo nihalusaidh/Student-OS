@@ -3359,6 +3359,7 @@ function ProfileMini({ title, value }) {
 
 function CompareProfileModal({ isDark, student, onClose, currentProfile, currentScoreData }) {
   if (!student) return null;
+
   const rows = [
     { label: "Overall score", me: Number(currentScoreData?.score || 0), them: Number(student.score || 0), suffix: "" },
     { label: "XP", me: Number(currentProfile?.xp || 0), them: Number(student.xp || 0), suffix: "" },
@@ -3366,35 +3367,97 @@ function CompareProfileModal({ isDark, student, onClose, currentProfile, current
     { label: "Kingdom trees", me: Number(currentProfile?.forest || 0), them: Number(student.forest || 0), suffix: "" },
     { label: "Achievements", me: Number(currentProfile?.achievementCount || 0), them: Number(student.achievementCount || 0), suffix: "" },
   ];
+
   const myWins = rows.filter((row) => row.me >= row.them).length;
   const theirWins = rows.length - myWins;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[170] bg-black/60 flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, scale: 0.88, y: 25 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.88 }} className={isDark ? "bg-slate-950 border border-white/10 text-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl" : "bg-white text-slate-900 rounded-3xl p-6 max-w-2xl w-full shadow-2xl"}>
-          <div className="flex justify-end"><button onClick={onClose} className="p-2 rounded-xl bg-gray-200 text-slate-900"><X size={18} /></button></div>
-          <h2 className="text-3xl font-black text-center">⚔️ Compare Students</h2>
-          <p className="text-sm text-gray-500 text-center mt-2">You vs {student.displayName || "Student"}</p>
-          <div className="mt-6 space-y-3">
-            {rows.map((row) => {
-              const meWins = row.me >= row.them;
-              return (
-                <div key={row.label} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
-                  <div className="flex justify-between text-sm font-bold mb-2">
-                    <span>{row.label}</span>
-                    <span>{meWins ? "You lead" : `${student.displayName || "Student"} leads`}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-center">
-                    <div className="bg-blue-600/10 rounded-xl p-3">You<br /><b>{row.me}{row.suffix}</b></div>
-                    <div className="bg-purple-600/10 rounded-xl p-3">Them<br /><b>{row.them}{row.suffix}</b></div>
-                  </div>
-                </div>
-              );
-            })}
+      <div className="fixed inset-0 z-[170] bg-black/70 flex items-center justify-center p-2 sm:p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.88, y: 25 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.88 }}
+          className={isDark
+            ? "bg-slate-950 border border-white/10 text-white rounded-3xl max-w-2xl w-full shadow-2xl max-h-[92vh] overflow-y-auto"
+            : "bg-white text-slate-900 rounded-3xl max-w-2xl w-full shadow-2xl max-h-[92vh] overflow-y-auto"}
+        >
+          <div className={isDark
+            ? "sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-white/10 p-4 flex items-center justify-between gap-3 rounded-t-3xl"
+            : "sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200 p-4 flex items-center justify-between gap-3 rounded-t-3xl"}
+          >
+            <button
+              onClick={onClose}
+              className={isDark
+                ? "px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center gap-2"
+                : "px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 font-bold text-sm flex items-center gap-2"}
+            >
+              ← Back
+            </button>
+            <h2 className="font-black text-base sm:text-lg text-center flex-1">Compare Profile</h2>
+            <button
+              onClick={onClose}
+              aria-label="Close compare profile"
+              className={isDark
+                ? "p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white"
+                : "p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900"}
+            >
+              <X size={18} />
+            </button>
           </div>
-          <div className="mt-5 text-center font-black text-xl">
-            {myWins >= theirWins ? "🏆 You are leading overall" : `🔥 ${student.displayName || "Student"} is leading overall`}
+
+          <div className="p-4 sm:p-6">
+            <h2 className="text-2xl sm:text-3xl font-black text-center">⚔️ Compare Students</h2>
+            <p className="text-sm text-gray-500 text-center mt-2">You vs {student.displayName || "Student"}</p>
+
+            <div className={isDark
+              ? "mt-5 border border-white/10 bg-white/5 rounded-2xl p-4 text-center"
+              : "mt-5 border border-gray-200 bg-gray-50 rounded-2xl p-4 text-center"}
+            >
+              <p className="text-sm text-gray-500">Overall Result</p>
+              <p className="text-xl font-black mt-1">
+                {myWins >= theirWins ? "🏆 You are leading overall" : `🔥 ${student.displayName || "Student"} is leading overall`}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">You lead {myWins} / {rows.length} areas</p>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {rows.map((row) => {
+                const meWins = row.me >= row.them;
+                return (
+                  <div
+                    key={row.label}
+                    className={isDark
+                      ? "border border-white/10 bg-white/5 rounded-2xl p-4"
+                      : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}
+                  >
+                    <div className="flex justify-between items-center gap-2 text-sm font-bold mb-3">
+                      <span>{row.label}</span>
+                      <span className={meWins ? "text-green-400" : "text-orange-400"}>
+                        {meWins ? "You lead" : "They lead"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-center">
+                      <div className="bg-blue-600/10 rounded-xl p-3">
+                        <p className="text-xs text-gray-500">You</p>
+                        <p className="font-black text-lg">{row.me}{row.suffix}</p>
+                      </div>
+                      <div className="bg-purple-600/10 rounded-xl p-3">
+                        <p className="text-xs text-gray-500">Them</p>
+                        <p className="font-black text-lg">{row.them}{row.suffix}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={onClose}
+              className="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-black"
+            >
+              ← Back to Students
+            </button>
           </div>
         </motion.div>
       </div>
