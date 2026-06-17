@@ -70,6 +70,10 @@ function StudentOSApp({ user }) {
       department: "ECE",
       year: "2",
       bio: "",
+      github: "",
+      linkedin: "",
+      portfolioWebsite: "",
+      showEmail: false,
       semester: "Semester 3",
       targetAttendance: 75,
     };
@@ -180,6 +184,10 @@ function StudentOSApp({ user }) {
       department: "",
       year: "",
       bio: "",
+      github: "",
+      linkedin: "",
+      portfolioWebsite: "",
+      showEmail: false,
       semester: "Semester 1",
       targetAttendance: 75,
     });
@@ -278,6 +286,10 @@ function StudentOSApp({ user }) {
               bio: data.profile.bio || prev.bio || "",
               country: data.profile.country || prev.country || "India",
               college: data.profile.college || prev.college || "",
+              github: data.profile.github || prev.github || "",
+              linkedin: data.profile.linkedin || prev.linkedin || "",
+              portfolioWebsite: data.profile.portfolioWebsite || prev.portfolioWebsite || "",
+              showEmail: typeof data.profile.showEmail === "boolean" ? data.profile.showEmail : Boolean(prev.showEmail),
             }));
           }
           if (typeof data.xp === "number") setXp(data.xp);
@@ -449,6 +461,10 @@ function StudentOSApp({ user }) {
             college: isSender ? item.toCollege : item.fromCollege,
             country: isSender ? item.toCountry : item.fromCountry,
             username: isSender ? item.toUsername : item.fromUsername,
+            github: isSender ? item.toGithub : item.fromGithub,
+            linkedin: isSender ? item.toLinkedin : item.fromLinkedin,
+            portfolioWebsite: isSender ? item.toPortfolioWebsite : item.fromPortfolioWebsite,
+            showEmail: isSender ? item.toShowEmail : item.fromShowEmail,
             score: Number(isSender ? item.toScore || 0 : item.fromScore || 0),
             rank: isSender ? item.toRank || null : item.fromRank || null,
             connectedAt: item.acceptedAt || item.updatedAt || "",
@@ -488,6 +504,10 @@ function StudentOSApp({ user }) {
           fromCollege: profile?.college || "",
           fromCountry: profile?.country || "",
           fromUsername: profile?.username || profile?.profileNameKey || "",
+          fromGithub: profile?.github || "",
+          fromLinkedin: profile?.linkedin || "",
+          fromPortfolioWebsite: profile?.portfolioWebsite || "",
+          fromShowEmail: Boolean(profile?.showEmail),
           fromScore: getLeaderboardScoreData().score,
           fromRank: null,
           toUid: student.id,
@@ -500,6 +520,10 @@ function StudentOSApp({ user }) {
           toCollege: student.college || "",
           toCountry: student.country || "",
           toUsername: student.username || student.profileNameKey || "",
+          toGithub: student.github || "",
+          toLinkedin: student.linkedin || "",
+          toPortfolioWebsite: student.portfolioWebsite || "",
+          toShowEmail: Boolean(student.showEmail),
           toScore: Number(student.score || 0),
           toRank: student.rank || null,
           status: "pending",
@@ -522,6 +546,11 @@ function StudentOSApp({ user }) {
         doc(db, "connectionRequests", request.id),
         {
           status: "accepted",
+          toEmail: user?.email || request.toEmail || "",
+          toGithub: profile?.github || request.toGithub || "",
+          toLinkedin: profile?.linkedin || request.toLinkedin || "",
+          toPortfolioWebsite: profile?.portfolioWebsite || request.toPortfolioWebsite || "",
+          toShowEmail: Boolean(profile?.showEmail),
           acceptedAt: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         },
@@ -724,7 +753,7 @@ function StudentOSApp({ user }) {
       uid: user?.uid || "",
       displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
       username: profile?.username || profile?.profileNameKey || profile?.profileName || "",
-      email: user?.email || "",
+      email: profile?.showEmail ? (user?.email || "") : "",
       photoURL: user?.photoURL || "",
       college: profile?.college || "",
       country: profile?.country || "",
@@ -732,6 +761,10 @@ function StudentOSApp({ user }) {
       department: profile?.department || profile?.degree || "",
       year: profile?.year || "",
       bio: profile?.bio || "",
+      github: profile?.github || "",
+      linkedin: profile?.linkedin || "",
+      portfolioWebsite: profile?.portfolioWebsite || "",
+      showEmail: Boolean(profile?.showEmail),
       xp: Number(xp || 0),
       forest: Number(forest || 0),
       focusSessions: Number(forest || 0),
@@ -753,7 +786,7 @@ function StudentOSApp({ user }) {
     const payload = {
       userId: user.uid,
       displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
-      email: user?.email || "",
+      email: profile?.showEmail ? (user?.email || "") : "",
       photoURL: user?.photoURL || "",
       college: profile?.college || "",
       country: profile?.country || "",
@@ -2719,6 +2752,13 @@ function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targ
           <input value={profile.semester || ""} onChange={(e) => { updateProfile("semester", e.target.value); setSemesterName(e.target.value); }} placeholder="Semester" className={inputClass} />
           <input type="number" value={profile.targetAttendance || 75} onChange={(e) => updateProfile("targetAttendance", Number(e.target.value))} placeholder="Target Attendance %" className={inputClass} />
           <textarea value={profile.bio || ""} onChange={(e) => updateProfile("bio", e.target.value)} placeholder="Short bio / skills / goal" className={`${inputClass} md:col-span-2 min-h-[90px] resize-none`} />
+          <input value={profile.github || ""} onChange={(e) => updateProfile("github", e.target.value)} placeholder="GitHub URL (optional)" className={inputClass} />
+          <input value={profile.linkedin || ""} onChange={(e) => updateProfile("linkedin", e.target.value)} placeholder="LinkedIn URL (optional)" className={inputClass} />
+          <input value={profile.portfolioWebsite || ""} onChange={(e) => updateProfile("portfolioWebsite", e.target.value)} placeholder="Portfolio / Website URL (optional)" className={inputClass} />
+          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
+            <input type="checkbox" checked={Boolean(profile.showEmail)} onChange={(e) => updateProfile("showEmail", e.target.checked)} />
+            Show my email to accepted connections
+          </label>
         </div>
       </motion.div>
 
@@ -3075,6 +3115,13 @@ function FeedPostCard({ post, user, isDark, reactToFeedPost }) {
   );
 }
 
+function safeExternalUrl(value) {
+  const url = String(value || "").trim();
+  if (!url) return "#";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
+
 function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, followingIds, connectedStudents, connectionRequests, followStudent, unfollowStudent, acceptConnectionRequest, rejectConnectionRequest, setSelectedSocialProfile, setCompareSocialProfile, currentScoreData, currentProfile }) {
   const [studentSearch, setStudentSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
@@ -3219,11 +3266,13 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
                   {student.college ? ` · ${student.college}` : ""}
                   {student.country ? ` · ${student.country}` : ""}
                 </p>
-                {student.email ? (
-                  <a href={`mailto:${student.email}`} className="mt-3 block text-sm font-bold text-blue-500 truncate">📧 {student.email}</a>
-                ) : (
-                  <p className="mt-3 text-sm text-gray-500">Email not available</p>
-                )}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                  {student.showEmail && student.email && <a href={`mailto:${student.email}`} className="bg-blue-600 text-white px-3 py-2 rounded-xl">Email</a>}
+                  {student.github && <a href={safeExternalUrl(student.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white px-3 py-2 rounded-xl">GitHub</a>}
+                  {student.linkedin && <a href={safeExternalUrl(student.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-3 py-2 rounded-xl">LinkedIn</a>}
+                  {student.portfolioWebsite && <a href={safeExternalUrl(student.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white px-3 py-2 rounded-xl">Website</a>}
+                  {!student.showEmail && !student.github && !student.linkedin && !student.portfolioWebsite && <p className="text-sm text-gray-500">No public contact links added.</p>}
+                </div>
               </div>
             ))}
           </div>
@@ -3415,6 +3464,19 @@ function SocialProfileModal({ isDark, student, onClose, isFollowing, onFollow, o
             <div className={isDark ? "bg-white/5 border border-white/10 p-3 rounded-2xl" : "bg-gray-50 border border-gray-200 p-3 rounded-2xl"}>🏆 Achievements: <b>{student.achievementCount || 0}</b></div>
             <div className={isDark ? "bg-white/5 border border-white/10 p-3 rounded-2xl" : "bg-gray-50 border border-gray-200 p-3 rounded-2xl"}>📊 Attendance: <b>{student.attendanceAverage || 0}%</b></div>
           </div>
+          {isFollowing ? (
+            <div className="mt-5">
+              <p className="text-xs font-bold text-gray-500 mb-2">Contact links unlocked</p>
+              <div className="grid grid-cols-2 gap-2 text-sm font-bold">
+                {student.showEmail && student.email && <a href={`mailto:${student.email}`} className="bg-blue-600 text-white py-2 rounded-xl text-center">Email</a>}
+                {student.github && <a href={safeExternalUrl(student.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white py-2 rounded-xl text-center">GitHub</a>}
+                {student.linkedin && <a href={safeExternalUrl(student.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white py-2 rounded-xl text-center">LinkedIn</a>}
+                {student.portfolioWebsite && <a href={safeExternalUrl(student.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white py-2 rounded-xl text-center">Website</a>}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-gray-500 text-center">Connect and wait for acceptance to unlock contact links.</p>
+          )}
           <button onClick={() => isFollowing ? onUnfollow(student) : onFollow(student)} className={isFollowing ? "mt-5 w-full bg-gray-600 text-white py-3 rounded-xl font-bold" : "mt-5 w-full bg-green-600 text-white py-3 rounded-xl font-bold"}>
             {isFollowing ? "Connected" : "+ Connect Student"}
           </button>
@@ -3765,13 +3827,22 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
               <p className="text-sm text-gray-500">Student OS Portfolio</p>
               <h2 className="text-3xl md:text-5xl font-black leading-tight">{profile?.name || user?.displayName || "Student"}</h2>
               <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.degree || "Student"} {profile?.college ? `· ${profile.college}` : ""}</p>
-              <p className="text-sm text-gray-500 mt-1">{user?.email}</p>
+              <p className="text-sm text-gray-500 mt-1">{profile?.showEmail ? user?.email : "Email hidden from public profile"}</p>
+              <div className="flex flex-wrap gap-2 mt-3 text-xs font-bold">
+                {profile?.github && <a href={safeExternalUrl(profile.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white px-3 py-2 rounded-xl">GitHub</a>}
+                {profile?.linkedin && <a href={safeExternalUrl(profile.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-3 py-2 rounded-xl">LinkedIn</a>}
+                {profile?.portfolioWebsite && <a href={safeExternalUrl(profile.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white px-3 py-2 rounded-xl">Website</a>}
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 min-w-[260px]">
             <button onClick={copyPortfolio} className="glow-btn bg-blue-600 text-white px-4 py-3 rounded-xl font-bold">Copy Link</button>
-            <a href={`mailto:${user?.email || ""}`} className="glow-btn bg-green-600 text-white px-4 py-3 rounded-xl font-bold text-center">Email Me</a>
+            {profile?.showEmail ? (
+              <a href={`mailto:${user?.email || ""}`} className="glow-btn bg-green-600 text-white px-4 py-3 rounded-xl font-bold text-center">Email Me</a>
+            ) : (
+              <button disabled className="bg-gray-400 text-white px-4 py-3 rounded-xl font-bold opacity-80">Email Hidden</button>
+            )}
             <button onClick={() => setActivePage("social")} className="glow-btn bg-purple-600 text-white px-4 py-3 rounded-xl font-bold">Connections</button>
             <button onClick={() => setActivePage("leaderboard")} className="glow-btn bg-orange-500 text-white px-4 py-3 rounded-xl font-bold">Leaderboard</button>
           </div>
