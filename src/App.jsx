@@ -3082,9 +3082,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
 
-  const rankedStudents = leaderboard.filter((row) => row.id !== user?.uid);
-  const allStudents = rankedStudents;
-  const top100Students = allStudents.slice(0, 100);
+  const allStudents = leaderboard.filter((row) => row.id !== user?.uid);
 
   const uniqueValues = (key) =>
     [...new Set(allStudents.map((row) => row?.[key]).filter(Boolean))]
@@ -3098,38 +3096,6 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
 
   const searchText = studentSearch.trim().toLowerCase();
 
-  const matchesFilters = (row) => {
-    const rowDepartment = row.department || row.degree || "";
-    if (countryFilter && row.country !== countryFilter) return false;
-    if (collegeFilter && row.college !== collegeFilter) return false;
-    if (departmentFilter && rowDepartment !== departmentFilter) return false;
-    if (yearFilter && String(row.year || "") !== String(yearFilter)) return false;
-    return true;
-  };
-
-  const searchableStudents = (searchText || countryFilter || collegeFilter || departmentFilter || yearFilter)
-    ? allStudents.filter((row) => {
-        const haystack = [
-          row.displayName,
-          row.username,
-          row.profileName,
-          row.profileNameKey,
-          row.email,
-          row.college,
-          row.degree,
-          row.department,
-          row.country,
-          row.year,
-          row.rank,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return haystack.includes(searchText) && matchesFilters(row);
-      })
-    : top100Students;
-
   const pendingReceivedRequests = (connectionRequests || []).filter((item) => item.toUid === user?.uid && item.status === "pending");
   const pendingSentIds = new Set((connectionRequests || []).filter((item) => item.fromUid === user?.uid && item.status === "pending").map((item) => item.toUid));
   const acceptedIds = new Set((connectionRequests || []).filter((item) => item.status === "accepted").map((item) => (item.fromUid === user?.uid ? item.toUid : item.fromUid)));
@@ -3141,41 +3107,66 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
     return "none";
   };
 
-  const followingRows = allStudents.filter((row) => acceptedIds.has(row.id));
-  const suggestedRows = searchableStudents.filter((row) => !acceptedIds.has(row.id));
-  const topStudents = top100Students.slice(0, 6);
+  const matchesFilters = (row) => {
+    const rowDepartment = row.department || row.degree || "";
+    if (countryFilter && row.country !== countryFilter) return false;
+    if (collegeFilter && row.college !== collegeFilter) return false;
+    if (departmentFilter && rowDepartment !== departmentFilter) return false;
+    if (yearFilter && String(row.year || "") !== String(yearFilter)) return false;
+    return true;
+  };
+
+  const filteredStudents = allStudents.filter((row) => {
+    const haystack = [
+      row.displayName,
+      row.username,
+      row.profileName,
+      row.profileNameKey,
+      row.email,
+      row.college,
+      row.degree,
+      row.department,
+      row.country,
+      row.year,
+      row.rank,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const searchOk = !searchText || haystack.includes(searchText);
+    return searchOk && matchesFilters(row);
+  });
+
+  const visibleStudents = searchText || countryFilter || collegeFilter || departmentFilter || yearFilter
+    ? filteredStudents
+    : filteredStudents.slice(0, 50);
+
   const connectedRows = connectedStudents || [];
 
   return (
     <section className="mt-5 space-y-5">
-      <div className={`${cardClass} p-5 rounded-2xl overflow-hidden relative`}>
-        <motion.div
-          animate={{ y: [0, -18, 0], rotate: [0, 8, 0] }}
-          transition={{ repeat: Infinity, duration: 4 }}
-          className="absolute right-8 top-8 text-5xl opacity-20"
-        >
-          🤝
-        </motion.div>
-        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className={`${cardClass} p-5 rounded-2xl`}>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-black flex items-center gap-2">
-              <Users className="text-blue-500" /> Student Network
+              <Users className="text-blue-500" /> Students
             </h2>
             <p className="text-sm text-gray-500 mt-2 max-w-2xl">
-              Search students, send connection requests, reveal contact details only after acceptance, and compare XP, Study Buddy, streak, and kingdom growth.
+              Search students, view profiles, compare progress, and connect only after both students accept.
             </p>
           </div>
-          <div className={isDark ? "bg-blue-400/10 border border-blue-300/20 rounded-2xl p-4" : "bg-blue-50 border border-blue-200 rounded-2xl p-4"}>
-            <p className="text-xs text-gray-500">Following</p>
-            <p className="text-3xl font-black text-blue-500">{followingIds.length}</p>
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className={isDark ? "bg-white/10 border border-white/10 rounded-2xl px-4 py-3" : "bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3"}>
+              <p className="text-xs text-gray-500">Connected</p>
+              <p className="text-2xl font-black text-green-500">{connectedRows.length}</p>
+            </div>
+            <div className={isDark ? "bg-white/10 border border-white/10 rounded-2xl px-4 py-3" : "bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3"}>
+              <p className="text-xs text-gray-500">Requests</p>
+              <p className="text-2xl font-black text-yellow-500">{pendingReceivedRequests.length}</p>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <SocialMetric isDark={isDark} title="Students discovered" value={allStudents.length} sub="All students searchable" emoji="🌍" />
-        <SocialMetric isDark={isDark} title="Following" value={followingIds.length} sub="Students you track" emoji="🤝" />
-        <SocialMetric isDark={isDark} title="Your score" value={currentScoreData.score} sub="Compare with others" emoji="🏆" />
       </div>
 
       {pendingReceivedRequests.length > 0 && (
@@ -3183,7 +3174,7 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-xl font-bold">Connection Requests</h3>
-              <p className="text-sm text-gray-500">Accept only students you want to share contact access with.</p>
+              <p className="text-sm text-gray-500">Accept only if you want to share contact access.</p>
             </div>
             <span className="bg-yellow-500 text-white text-xs px-3 py-1 rounded-full font-bold">{pendingReceivedRequests.length} pending</span>
           </div>
@@ -3191,7 +3182,11 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
             {pendingReceivedRequests.map((request) => (
               <div key={request.id} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
                 <p className="font-bold truncate">{request.fromName || "Student"}</p>
-                <p className="text-xs text-gray-500 truncate">{request.fromDepartment || request.fromDegree || "Student"} {request.fromYear ? `· Year ${request.fromYear}` : ""} {request.fromCollege ? `· ${request.fromCollege}` : ""}</p>
+                <p className="text-xs text-gray-500 truncate">
+                  {request.fromDepartment || request.fromDegree || "Student"}
+                  {request.fromYear ? ` · Year ${request.fromYear}` : ""}
+                  {request.fromCollege ? ` · ${request.fromCollege}` : ""}
+                </p>
                 <div className="grid grid-cols-2 gap-2 mt-3 text-xs font-bold">
                   <button onClick={() => acceptConnectionRequest(request)} className="bg-green-600 text-white py-2 rounded-xl">Accept</button>
                   <button onClick={() => rejectConnectionRequest(request)} className="bg-gray-600 text-white py-2 rounded-xl">Reject</button>
@@ -3206,143 +3201,106 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-xl font-bold">Connected Students</h3>
-            <p className="text-sm text-gray-500">Emails are shown only after both students accept the connection request.</p>
+            <p className="text-sm text-gray-500">Contact details are visible only after both students accept.</p>
           </div>
           <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold">{connectedRows.length} connected</span>
         </div>
 
         {connectedRows.length === 0 ? (
-          <EmptyState emoji="📧" title="No connected emails yet" description="Connect with a student from the student list to reveal their email on your dashboard." />
+          <EmptyState emoji="🤝" title="No accepted connections yet" description="Search students below and send a connection request." />
         ) : (
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
             {connectedRows.map((student) => (
               <div key={student.id} className={isDark ? "border border-white/10 bg-white/5 rounded-2xl p-4" : "border border-gray-200 bg-gray-50 rounded-2xl p-4"}>
                 <p className="font-bold truncate">{student.displayName}</p>
-                <p className="text-xs text-gray-500 truncate">{student.department || student.degree || "Student"} {student.year ? `· Year ${student.year}` : ""} {student.college ? `· ${student.college}` : ""} {student.country ? `· ${student.country}` : ""}</p>
-                <a href={`mailto:${student.email}`} className="mt-3 block text-sm font-bold text-blue-500 truncate">📧 {student.email}</a>
+                <p className="text-xs text-gray-500 truncate">
+                  {student.department || student.degree || "Student"}
+                  {student.year ? ` · Year ${student.year}` : ""}
+                  {student.college ? ` · ${student.college}` : ""}
+                  {student.country ? ` · ${student.country}` : ""}
+                </p>
+                {student.email ? (
+                  <a href={`mailto:${student.email}`} className="mt-3 block text-sm font-bold text-blue-500 truncate">📧 {student.email}</a>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-500">Email not available</p>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-5">
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-xl font-bold">Following</h3>
-              <p className="text-sm text-gray-500">Students you want to keep up with.</p>
-            </div>
-          </div>
-
-          {followingRows.length === 0 ? (
-            <EmptyState emoji="🤝" title="No students followed yet" description="Connect with students from the student network to build your academic circle." />
-          ) : (
-            <div className="space-y-3 max-h-[520px] overflow-auto pr-1">
-              {followingRows.map((row) => (
-                <StudentSocialRow
-                  key={row.id}
-                  isDark={isDark}
-                  row={row}
-                  connectionStatus="accepted"
-                  onFollow={followStudent}
-                  onUnfollow={unfollowStudent}
-                  onView={() => setSelectedSocialProfile(row)}
-                  onCompare={() => setCompareSocialProfile(row)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-xl font-bold">Suggested Students</h3>
-              <p className="text-sm text-gray-500">
-                {leaderboardStatus === "loading" ? "Loading students..." : "Connect with students and reveal their contact email."}
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-4 space-y-3">
-            <input
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-              placeholder="Search by username, profile name, email, college, department, country, year, or rank..."
-              className={isDark ? "w-full bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-slate-400" : "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400"}
-            />
-
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
-              <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
-                <option value="">All countries</option>
-                {countries.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-              <select value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
-                <option value="">All colleges</option>
-                {colleges.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-              <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
-                <option value="">All departments</option>
-                {departments.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-              <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
-                <option value="">All years</option>
-                {years.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
-
-            {(studentSearch || countryFilter || collegeFilter || departmentFilter || yearFilter) && (
-              <button
-                onClick={() => { setStudentSearch(""); setCountryFilter(""); setCollegeFilter(""); setDepartmentFilter(""); setYearFilter(""); }}
-                className="text-xs font-bold text-blue-500"
-              >
-                Clear search filters
-              </button>
-            )}
-
-            <p className="text-xs text-gray-500 mt-2">
-              {(searchText || countryFilter || collegeFilter || departmentFilter || yearFilter) ? `${suggestedRows.length} result${suggestedRows.length === 1 ? "" : "s"} found in all registered students.` : "Top 100 shown by default. Search can find all registered students."}
+      <div className={`${cardClass} p-5 rounded-2xl`}>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-xl font-bold">Find Students</h3>
+            <p className="text-sm text-gray-500">
+              {leaderboardStatus === "loading" ? "Loading students..." : "Search by name, username, college, department, country, year, or rank."}
             </p>
           </div>
+        </div>
 
-          {suggestedRows.length === 0 ? (
-            <EmptyState emoji="🔍" title={searchText ? "No matching student found" : "No suggestions yet"} description={searchText ? "Try another profile name, email, college, or rank." : "Public profiles will appear here as more students use Student OS."} />
-          ) : (
-            <div className="grid md:grid-cols-2 gap-3 max-h-[520px] overflow-auto pr-1">
-              {suggestedRows.map((row) => (
-                <StudentSocialCard
-                  key={row.id}
-                  isDark={isDark}
-                  row={row}
-                  connectionStatus={getConnectionStatus(row)}
-                  onFollow={followStudent}
-                  onUnfollow={unfollowStudent}
-                  onView={() => setSelectedSocialProfile(row)}
-                  onCompare={() => setCompareSocialProfile(row)}
-                />
-              ))}
-            </div>
+        <div className="space-y-3 mb-4">
+          <input
+            value={studentSearch}
+            onChange={(e) => setStudentSearch(e.target.value)}
+            placeholder="Search students..."
+            className={isDark ? "w-full bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-slate-400" : "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400"}
+          />
+
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
+            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+              <option value="">All countries</option>
+              {countries.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+              <option value="">All colleges</option>
+              {colleges.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+              <option value="">All departments</option>
+              {departments.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+              <option value="">All years</option>
+              {years.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+
+          {(studentSearch || countryFilter || collegeFilter || departmentFilter || yearFilter) && (
+            <button
+              onClick={() => { setStudentSearch(""); setCountryFilter(""); setCollegeFilter(""); setDepartmentFilter(""); setYearFilter(""); }}
+              className="text-xs font-bold text-blue-500"
+            >
+              Clear filters
+            </button>
           )}
-        </div>
-      </div>
 
-      <div className={`${cardClass} p-5 rounded-2xl`}>
-        <h3 className="text-xl font-bold mb-4">Top public profiles</h3>
-        <div className="grid md:grid-cols-3 gap-3">
-          {topStudents.map((row) => (
-            <StudentSocialCard
-              key={`top-${row.id}`}
-              isDark={isDark}
-              row={row}
-              connectionStatus={getConnectionStatus(row)}
-              onFollow={followStudent}
-              onUnfollow={unfollowStudent}
-              onView={() => setSelectedSocialProfile(row)}
-              onCompare={() => setCompareSocialProfile(row)}
-            />
-          ))}
+          <p className="text-xs text-gray-500">
+            {(searchText || countryFilter || collegeFilter || departmentFilter || yearFilter)
+              ? `${visibleStudents.length} result${visibleStudents.length === 1 ? "" : "s"} found.`
+              : "Top 50 shown by default. Use search to find all registered students."}
+          </p>
         </div>
+
+        {visibleStudents.length === 0 ? (
+          <EmptyState emoji="🔍" title="No matching student found" description="Try another name, college, country, department, or rank." />
+        ) : (
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[680px] overflow-auto pr-1">
+            {visibleStudents.map((row) => (
+              <StudentSocialCard
+                key={row.id}
+                isDark={isDark}
+                row={row}
+                connectionStatus={getConnectionStatus(row)}
+                onFollow={followStudent}
+                onUnfollow={unfollowStudent}
+                onView={() => setSelectedSocialProfile(row)}
+                onCompare={() => setCompareSocialProfile(row)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
