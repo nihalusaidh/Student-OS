@@ -159,6 +159,81 @@ function StudentOSApp({ user }) {
     return Math.round((getDateOnly(newDate) - getDateOnly(oldDate)) / oneDay);
   };
 
+  // IMPORTANT FIX: reset visible data whenever a different Firebase account logs in.
+  // Without this, browser localStorage can show the previous account's name, XP, streak, etc.
+  // Firestore will load the correct account data immediately after this reset.
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    setCloudReady(false);
+    setCloudStatus("loading");
+    setCloudError("");
+
+    setActivePage("dashboard");
+    setProfile({
+      name: user.displayName || user.email?.split("@")[0] || "Student",
+      username: "",
+      college: "",
+      country: "India",
+      degree: "",
+      department: "",
+      year: "",
+      bio: "",
+      semester: "Semester 1",
+      targetAttendance: 75,
+    });
+
+    setXp(0);
+    setCompleted([]);
+    setMood("");
+    setForest(0);
+    setStreak(0);
+    setLastStreakDate("");
+    setAchievements([]);
+    setReward(null);
+    setTreeAnimation(false);
+    setTimeLeft(25 * 60);
+    setIsRunning(false);
+    setFocusEndTime(null);
+    setAiQuestion("");
+    setAiAnswer("Ask me about exams, attendance, internals, reminders, semester health, or your study plan.");
+    setReminders([]);
+    setReminderTitle("");
+    setReminderDate("");
+    setAttendanceItems([]);
+    setAttSubject("");
+    setAttAttended("");
+    setAttConducted("");
+    setAttWeekly("");
+    setAttWeeks("");
+    setAttTarget("75");
+    setInternalSubjects([]);
+    setInternalSubjectName("");
+    setSelectedInternalSubject("");
+    setComponentName("CIA 1");
+    setComponentStatus("not-conducted");
+    setComponentScored("");
+    setComponentConducted("");
+    setComponentWeight("");
+    setSemesterName("Semester 1");
+    setTargetGpa(8.5);
+    setCurrentGpa(0);
+    setSemesterCredits(20);
+    setCalendarEvents([]);
+    setEventTitle("");
+    setEventSubject("");
+    setEventType("CIA");
+    setEventPriority("Medium");
+    setEventDate("");
+    setFollowingIds([]);
+    setConnectedStudents([]);
+    setSelectedSocialProfile(null);
+    setCompareSocialProfile(null);
+    setFeedPosts([]);
+    setFeedStatus("loading");
+    setLeaderboardStatus("loading");
+  }, [user?.uid]);
+
   useEffect(() => localStorage.setItem("studentOS_theme", theme), [theme]);
   useEffect(() => localStorage.setItem("studentOS_profile", JSON.stringify(profile)), [profile]);
   useEffect(() => localStorage.setItem("studentOS_xp", xp), [xp]);
