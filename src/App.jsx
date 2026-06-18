@@ -170,6 +170,7 @@ function StudentOSApp({ user }) {
   const [selectedNoteFile, setSelectedNoteFile] = useState(null);
   const [noteUploading, setNoteUploading] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+  const [editingRequest, setEditingRequest] = useState(null);
 
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
@@ -273,6 +274,7 @@ function StudentOSApp({ user }) {
     setSelectedNoteFile(null);
     setNoteUploading(false);
     setEditingNote(null);
+    setEditingRequest(null);
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -1721,7 +1723,67 @@ function StudentOSApp({ user }) {
     }
   };
 
+
+  const updateNoteRequest = async () => {
+    if (!editingRequest?.id) return;
+
+    if (!String(editingRequest.subject || "").trim() || !String(editingRequest.message || "").trim()) {
+      return showToast("Missing Details", "Subject and message are required.", "⚠️");
+    }
+
+    if (editingRequest.userId !== user.uid) {
+      return showToast("Not Allowed", "You can edit only your own notes request.", "🔒");
+    }
+
+    if (editingRequest.status === "fulfilled") {
+      return showToast("Already Fulfilled", "Fulfilled requests cannot be edited.", "✅");
+    }
+
+    try {
+      await setDoc(
+        doc(db, "noteRequests", editingRequest.id),
+        {
+          subject: String(editingRequest.subject || "").trim(),
+          unit: String(editingRequest.unit || "").trim(),
+          message: String(editingRequest.message || "").trim(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setEditingRequest(null);
+      showToast("Request Updated", "Your notes request was updated.", "✅");
+    } catch (error) {
+      console.error("Update note request error:", error);
+      showToast("Update Failed", "Could not update this request. Try again.", "⚠️");
+    }
+  };
+
+  const deleteNoteRequest = async (request) => {
+    if (!request?.id) return;
+
+    if (request.userId !== user.uid) {
+      return showToast("Not Allowed", "You can delete only your own notes request.", "🔒");
+    }
+
+    const confirmed = window.confirm("Delete this notes request permanently?");
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, "noteRequests", request.id));
+      if (editingRequest?.id === request.id) setEditingRequest(null);
+      showToast("Request Deleted", "Your notes request was removed.", "🗑️");
+    } catch (error) {
+      console.error("Delete note request error:", error);
+      showToast("Delete Failed", "Could not delete this request. Try again.", "⚠️");
+    }
+  };
+
   const fulfillNoteRequest = async (request, file) => {
+    if (request?.userId === user.uid) {
+      return showToast("Own Request", "You cannot fulfill your own request. Edit or delete it from My Requests.", "ℹ️");
+    }
+
     if (!file) {
       return showToast("Choose PDF", "Select a PDF file to fulfill this request.", "⚠️");
     }
@@ -2134,8 +2196,12 @@ function StudentOSApp({ user }) {
                 noteUploading={noteUploading}
                 editingNote={editingNote}
                 setEditingNote={setEditingNote}
+                editingRequest={editingRequest}
+                setEditingRequest={setEditingRequest}
                 updateNote={updateNote}
                 deleteNote={deleteNote}
+                updateNoteRequest={updateNoteRequest}
+                deleteNoteRequest={deleteNoteRequest}
                 user={user}
                 uploadNote={uploadNote}
                 downloadNote={downloadNote}
@@ -3360,8 +3426,12 @@ function NotesHubPage({
   noteUploading,
   editingNote,
   setEditingNote,
+  editingRequest,
+  setEditingRequest,
   updateNote,
   deleteNote,
+  updateNoteRequest,
+  deleteNoteRequest,
   user,
   uploadNote,
   downloadNote,
@@ -3371,6 +3441,7 @@ function NotesHubPage({
   const openRequests = noteRequests.filter((item) => item.status !== "fulfilled");
   const fulfilledRequests = noteRequests.filter((item) => item.status === "fulfilled");
   const myNotes = notes.filter((note) => note.userId === user?.uid);
+  const myRequests = noteRequests.filter((request) => request.userId === user?.uid);
 
   const filteredNotes = notes.filter((note) => {
     if (!search) return true;
@@ -3439,15 +3510,58 @@ function NotesHubPage({
       </div>
 
       {notesTab === "request" && (
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Request Notes</h3>
-          <p className="text-sm text-gray-500 mt-1">Ask the community for notes, PDFs, previous questions, lab records, or unit-wise short notes.</p>
-          <div className="grid md:grid-cols-2 gap-3 mt-4">
-            <input value={requestSubject} onChange={(e) => setRequestSubject(e.target.value)} placeholder="Subject, e.g. DSP" className={inputClass} />
-            <input value={requestUnit} onChange={(e) => setRequestUnit(e.target.value)} placeholder="Unit / Topic, e.g. Unit 4" className={inputClass} />
+        <div className="space-y-5">
+          <div className={`${cardClass} p-5 rounded-2xl`}>
+            <h3 className="text-xl font-black">Request Notes</h3>
+            <p className="text-sm text-gray-500 mt-1">Ask the community for notes, PDFs, previous questions, lab records, or unit-wise short notes.</p>
+            <div className="grid md:grid-cols-2 gap-3 mt-4">
+              <input value={requestSubject} onChange={(e) => setRequestSubject(e.target.value)} placeholder="Subject, e.g. DSP" className={inputClass} />
+              <input value={requestUnit} onChange={(e) => setRequestUnit(e.target.value)} placeholder="Unit / Topic, e.g. Unit 4" className={inputClass} />
+            </div>
+            <textarea value={requestMessage} onChange={(e) => setRequestMessage(e.target.value)} placeholder="What exactly do you need?" className={`${inputClass} w-full mt-3 min-h-28`} />
+            <button onClick={addNoteRequest} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold">Post Request</button>
           </div>
-          <textarea value={requestMessage} onChange={(e) => setRequestMessage(e.target.value)} placeholder="What exactly do you need?" className={`${inputClass} w-full mt-3 min-h-28`} />
-          <button onClick={addNoteRequest} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold">Post Request</button>
+
+          <div className={`${cardClass} p-5 rounded-2xl`}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-xl font-black">My Request History</h3>
+                <p className="text-sm text-gray-500 mt-1">Track requests you posted. Edit or delete open requests. Fulfilled requests stay as history.</p>
+              </div>
+              <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold">{myRequests.length} requests</span>
+            </div>
+
+            {editingRequest && (
+              <div className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4 mb-5" : "bg-purple-50 border border-purple-100 rounded-2xl p-4 mb-5"}>
+                <h4 className="font-black mb-3">Edit Request</h4>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <input value={editingRequest.subject || ""} onChange={(e) => setEditingRequest({ ...editingRequest, subject: e.target.value })} placeholder="Subject" className={inputClass} />
+                  <input value={editingRequest.unit || ""} onChange={(e) => setEditingRequest({ ...editingRequest, unit: e.target.value })} placeholder="Unit / Topic" className={inputClass} />
+                </div>
+                <textarea value={editingRequest.message || ""} onChange={(e) => setEditingRequest({ ...editingRequest, message: e.target.value })} placeholder="What exactly do you need?" className={`${inputClass} w-full mt-3 min-h-24`} />
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button onClick={updateNoteRequest} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold">Save Request</button>
+                  <button onClick={() => setEditingRequest(null)} className={isDark ? "bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl font-bold" : "bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-xl font-bold"}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {myRequests.length === 0 ? (
+              <EmptyNotes cardClass={cardClass} emoji="📢" title="No requests yet" message="Post a notes request and it will appear here with edit and delete controls." />
+            ) : (
+              <div className="grid lg:grid-cols-2 gap-4">
+                {myRequests.map((request) => (
+                  <MyNoteRequestCard
+                    key={request.id}
+                    request={request}
+                    isDark={isDark}
+                    onEdit={() => setEditingRequest(request)}
+                    onDelete={() => deleteNoteRequest(request)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -3527,7 +3641,7 @@ function NotesHubPage({
         ) : (
           <div className="grid lg:grid-cols-2 gap-4">
             {filteredRequests.map((request) => (
-              <NoteRequestCard key={request.id} request={request} isDark={isDark} fulfillNoteRequest={fulfillNoteRequest} />
+              <NoteRequestCard key={request.id} request={request} isDark={isDark} user={user} onEdit={() => setEditingRequest(request)} onDelete={() => deleteNoteRequest(request)} fulfillNoteRequest={fulfillNoteRequest} />
             ))}
           </div>
         )
@@ -3619,8 +3733,46 @@ function NoteCard({ note, isDark, downloadNote }) {
   );
 }
 
-function NoteRequestCard({ request, isDark, fulfillNoteRequest }) {
+function MyNoteRequestCard({ request, isDark, onEdit, onDelete }) {
   const created = request.createdAt?.toDate ? request.createdAt.toDate().toLocaleDateString() : "Recently";
+  const fulfilled = request.status === "fulfilled";
+
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-3xl">📢</p>
+          <h3 className="text-lg font-black mt-2">{request.subject || "Notes Request"}</h3>
+          <p className="text-sm text-gray-500 mt-1">{request.unit || "Any unit"} · Requested {created}</p>
+        </div>
+        <span className={fulfilled ? "bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold" : "bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold"}>{fulfilled ? "Fulfilled" : "Open"}</span>
+      </div>
+      <p className="text-sm text-gray-500 mt-3 leading-relaxed">{request.message}</p>
+      {fulfilled && (
+        <div className={isDark ? "bg-green-400/10 border border-green-300/20 rounded-xl p-3 mt-4 text-sm" : "bg-green-50 border border-green-100 rounded-xl p-3 mt-4 text-sm text-green-800"}>
+          ✅ Fulfilled by {request.fulfilledByName || "another student"}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>👤 {request.displayName || "You"}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🏫 {request.college || "College"}</div>
+      </div>
+      {!fulfilled ? (
+        <div className="grid grid-cols-2 gap-2 mt-4 text-sm font-bold">
+          <button onClick={onEdit} className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl">Edit</button>
+          <button onClick={onDelete} className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl">Delete</button>
+        </div>
+      ) : (
+        <button onClick={onDelete} className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl font-bold">Delete History</button>
+      )}
+    </motion.div>
+  );
+}
+
+function NoteRequestCard({ request, isDark, user, onEdit, onDelete, fulfillNoteRequest }) {
+  const created = request.createdAt?.toDate ? request.createdAt.toDate().toLocaleDateString() : "Recently";
+  const isMine = request.userId === user?.uid;
+
   return (
     <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
       <div className="flex items-start justify-between gap-3">
@@ -3629,14 +3781,24 @@ function NoteRequestCard({ request, isDark, fulfillNoteRequest }) {
           <h3 className="text-lg font-black mt-2">{request.subject || "Notes Request"}</h3>
           <p className="text-sm text-gray-500 mt-1">{request.unit || "Any unit"} · Requested {created}</p>
         </div>
-        <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">Open</span>
+        <span className={isMine ? "bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold" : "bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold"}>{isMine ? "Your Request" : "Open"}</span>
       </div>
       <p className="text-sm text-gray-500 mt-3 leading-relaxed">{request.message}</p>
       <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
         <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>👤 {request.displayName || "Student"}</div>
         <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🏫 {request.college || "College"}</div>
       </div>
-      <label className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold text-center block cursor-pointer">Upload PDF to Fulfill<input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => fulfillNoteRequest(request, e.target.files?.[0] || null)} /></label>
+      {isMine ? (
+        <div className="mt-4 space-y-3">
+          <div className={isDark ? "bg-blue-400/10 border border-blue-300/20 rounded-xl p-3 text-sm text-blue-100" : "bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-800"}>This is your request. Other students can upload notes to help you.</div>
+          <div className="grid grid-cols-2 gap-2 text-sm font-bold">
+            <button onClick={onEdit} className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl">Edit</button>
+            <button onClick={onDelete} className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl">Delete</button>
+          </div>
+        </div>
+      ) : (
+        <label className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold text-center block cursor-pointer">Upload PDF to Fulfill<input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => fulfillNoteRequest(request, e.target.files?.[0] || null)} /></label>
+      )}
     </motion.div>
   );
 }
