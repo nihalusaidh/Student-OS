@@ -75,6 +75,12 @@ function StudentOSApp({ user }) {
       linkedin: "",
       portfolioWebsite: "",
       showEmail: false,
+      resumeLink: "",
+      skills: [],
+      projects: [],
+      publicProfile: true,
+      showRank: true,
+      showCollege: true,
       semester: "Semester 3",
       targetAttendance: 75,
     };
@@ -206,6 +212,12 @@ function StudentOSApp({ user }) {
       linkedin: "",
       portfolioWebsite: "",
       showEmail: false,
+      resumeLink: "",
+      skills: [],
+      projects: [],
+      publicProfile: true,
+      showRank: true,
+      showCollege: true,
       semester: "Semester 1",
       targetAttendance: 75,
     });
@@ -324,6 +336,12 @@ function StudentOSApp({ user }) {
               linkedin: data.profile.linkedin || prev.linkedin || "",
               portfolioWebsite: data.profile.portfolioWebsite || prev.portfolioWebsite || "",
               showEmail: typeof data.profile.showEmail === "boolean" ? data.profile.showEmail : Boolean(prev.showEmail),
+              resumeLink: data.profile.resumeLink || prev.resumeLink || "",
+              skills: Array.isArray(data.profile.skills) ? data.profile.skills : (Array.isArray(prev.skills) ? prev.skills : []),
+              projects: Array.isArray(data.profile.projects) ? data.profile.projects : (Array.isArray(prev.projects) ? prev.projects : []),
+              publicProfile: typeof data.profile.publicProfile === "boolean" ? data.profile.publicProfile : (typeof prev.publicProfile === "boolean" ? prev.publicProfile : true),
+              showRank: typeof data.profile.showRank === "boolean" ? data.profile.showRank : (typeof prev.showRank === "boolean" ? prev.showRank : true),
+              showCollege: typeof data.profile.showCollege === "boolean" ? data.profile.showCollege : (typeof prev.showCollege === "boolean" ? prev.showCollege : true),
             }));
           }
           if (typeof data.xp === "number") setXp(data.xp);
@@ -534,6 +552,9 @@ function StudentOSApp({ user }) {
             linkedin: isSender ? item.toLinkedin : item.fromLinkedin,
             portfolioWebsite: isSender ? item.toPortfolioWebsite : item.fromPortfolioWebsite,
             showEmail: isSender ? item.toShowEmail : item.fromShowEmail,
+            resumeLink: isSender ? item.toResumeLink : item.fromResumeLink,
+            skills: isSender ? item.toSkills || [] : item.fromSkills || [],
+            projects: isSender ? item.toProjects || [] : item.fromProjects || [],
             score: Number(isSender ? item.toScore || 0 : item.fromScore || 0),
             rank: isSender ? item.toRank || null : item.fromRank || null,
             connectedAt: item.acceptedAt || item.updatedAt || "",
@@ -577,6 +598,9 @@ function StudentOSApp({ user }) {
           fromLinkedin: profile?.linkedin || "",
           fromPortfolioWebsite: profile?.portfolioWebsite || "",
           fromShowEmail: Boolean(profile?.showEmail),
+          fromResumeLink: profile?.resumeLink || "",
+          fromSkills: Array.isArray(profile?.skills) ? profile.skills : [],
+          fromProjects: Array.isArray(profile?.projects) ? profile.projects : [],
           fromScore: getLeaderboardScoreData().score,
           fromRank: null,
           toUid: student.id,
@@ -593,6 +617,9 @@ function StudentOSApp({ user }) {
           toLinkedin: student.linkedin || "",
           toPortfolioWebsite: student.portfolioWebsite || "",
           toShowEmail: Boolean(student.showEmail),
+          toResumeLink: student.resumeLink || "",
+          toSkills: Array.isArray(student.skills) ? student.skills : [],
+          toProjects: Array.isArray(student.projects) ? student.projects : [],
           toScore: Number(student.score || 0),
           toRank: student.rank || null,
           status: "pending",
@@ -620,6 +647,9 @@ function StudentOSApp({ user }) {
           toLinkedin: profile?.linkedin || request.toLinkedin || "",
           toPortfolioWebsite: profile?.portfolioWebsite || request.toPortfolioWebsite || "",
           toShowEmail: Boolean(profile?.showEmail),
+          toResumeLink: profile?.resumeLink || "",
+          toSkills: Array.isArray(profile?.skills) ? profile.skills : [],
+          toProjects: Array.isArray(profile?.projects) ? profile.projects : [],
           acceptedAt: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         },
@@ -834,6 +864,12 @@ function StudentOSApp({ user }) {
       linkedin: profile?.linkedin || "",
       portfolioWebsite: profile?.portfolioWebsite || "",
       showEmail: Boolean(profile?.showEmail),
+      resumeLink: profile?.resumeLink || "",
+      skills: Array.isArray(profile?.skills) ? profile.skills : [],
+      projects: Array.isArray(profile?.projects) ? profile.projects : [],
+      publicProfile: typeof profile?.publicProfile === "boolean" ? profile.publicProfile : true,
+      showRank: typeof profile?.showRank === "boolean" ? profile.showRank : true,
+      showCollege: typeof profile?.showCollege === "boolean" ? profile.showCollege : true,
       xp: Number(xp || 0),
       forest: Number(forest || 0),
       focusSessions: Number(forest || 0),
@@ -3133,6 +3169,10 @@ function NavItem({ active, onClick, icon, label, navHover }) {
 function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targetGpa, setTargetGpa, currentGpa, setCurrentGpa, semesterName, setSemesterName, exportStudentOSData, importStudentOSData, user, cloudStatus, cloudError, onLogout, saveProfileName }) {
   const [nameDraft, setNameDraft] = useState(profile?.name || "");
   const [nameSaving, setNameSaving] = useState(false);
+  const [skillInput, setSkillInput] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectLink, setProjectLink] = useState("");
 
   useEffect(() => {
     setNameDraft(profile?.name || "");
@@ -3146,6 +3186,40 @@ function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targ
     setNameSaving(true);
     await saveProfileName?.(nameDraft);
     setNameSaving(false);
+  };
+
+  const addSkill = () => {
+    const skill = skillInput.trim();
+    if (!skill) return;
+    const existing = Array.isArray(profile.skills) ? profile.skills : [];
+    if (existing.map((item) => item.toLowerCase()).includes(skill.toLowerCase())) {
+      setSkillInput("");
+      return;
+    }
+    updateProfile("skills", [...existing, skill]);
+    setSkillInput("");
+  };
+
+  const removeSkill = (skill) => {
+    updateProfile("skills", (profile.skills || []).filter((item) => item !== skill));
+  };
+
+  const addProject = () => {
+    if (!projectName.trim()) return;
+    const newProject = {
+      id: Date.now(),
+      name: projectName.trim(),
+      description: projectDescription.trim(),
+      link: projectLink.trim(),
+    };
+    updateProfile("projects", [...(Array.isArray(profile.projects) ? profile.projects : []), newProject]);
+    setProjectName("");
+    setProjectDescription("");
+    setProjectLink("");
+  };
+
+  const removeProject = (id) => {
+    updateProfile("projects", (profile.projects || []).filter((project) => project.id !== id));
   };
 
   return (
@@ -3176,9 +3250,60 @@ function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targ
           <input value={profile.github || ""} onChange={(e) => updateProfile("github", e.target.value)} placeholder="GitHub URL (optional)" className={inputClass} />
           <input value={profile.linkedin || ""} onChange={(e) => updateProfile("linkedin", e.target.value)} placeholder="LinkedIn URL (optional)" className={inputClass} />
           <input value={profile.portfolioWebsite || ""} onChange={(e) => updateProfile("portfolioWebsite", e.target.value)} placeholder="Portfolio / Website URL (optional)" className={inputClass} />
+          <input value={profile.resumeLink || ""} onChange={(e) => updateProfile("resumeLink", e.target.value)} placeholder="Resume PDF link (optional)" className={inputClass} />
+
+          <div className={isDark ? "md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4" : "md:col-span-2 bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
+            <h4 className="font-bold mb-3">Skills</h4>
+            <div className="grid md:grid-cols-[1fr_auto] gap-2">
+              <input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSkill()} placeholder="Add skill, e.g. React, Python, C" className={inputClass} />
+              <button type="button" onClick={addSkill} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold">Add Skill</button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {(profile.skills || []).length ? (profile.skills || []).map((skill) => (
+                <button key={skill} type="button" onClick={() => removeSkill(skill)} className="px-3 py-1 rounded-full bg-blue-600/15 text-blue-600 text-xs font-bold">
+                  {skill} ×
+                </button>
+              )) : <p className="text-sm text-gray-500">No skills added yet.</p>}
+            </div>
+          </div>
+
+          <div className={isDark ? "md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4" : "md:col-span-2 bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
+            <h4 className="font-bold mb-3">Projects</h4>
+            <div className="grid md:grid-cols-3 gap-2">
+              <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Project name" className={inputClass} />
+              <input value={projectDescription} onChange={(e) => setProjectDescription(e.target.value)} placeholder="Short description" className={inputClass} />
+              <input value={projectLink} onChange={(e) => setProjectLink(e.target.value)} placeholder="Project link" className={inputClass} />
+            </div>
+            <button type="button" onClick={addProject} className="mt-3 bg-green-600 text-white px-4 py-2 rounded-xl font-bold">Add Project</button>
+            <div className="space-y-2 mt-3">
+              {(profile.projects || []).length ? (profile.projects || []).map((project) => (
+                <div key={project.id} className={isDark ? "bg-white/5 border border-white/10 rounded-xl p-3 flex items-start justify-between gap-3" : "bg-white border border-gray-200 rounded-xl p-3 flex items-start justify-between gap-3"}>
+                  <div>
+                    <p className="font-bold">{project.name}</p>
+                    {project.description && <p className="text-xs text-gray-500 mt-1">{project.description}</p>}
+                    {project.link && <a href={safeExternalUrl(project.link)} target="_blank" rel="noreferrer" className="text-xs text-blue-500 font-bold mt-1 inline-block">Open project</a>}
+                  </div>
+                  <button type="button" onClick={() => removeProject(project.id)} className="text-red-500 font-bold text-sm">Delete</button>
+                </div>
+              )) : <p className="text-sm text-gray-500">No projects added yet.</p>}
+            </div>
+          </div>
+
           <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
             <input type="checkbox" checked={Boolean(profile.showEmail)} onChange={(e) => updateProfile("showEmail", e.target.checked)} />
             Show my email to accepted connections
+          </label>
+          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
+            <input type="checkbox" checked={profile.publicProfile !== false} onChange={(e) => updateProfile("publicProfile", e.target.checked)} />
+            Make my portfolio public inside Student OS
+          </label>
+          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
+            <input type="checkbox" checked={profile.showRank !== false} onChange={(e) => updateProfile("showRank", e.target.checked)} />
+            Show rank and XP on portfolio
+          </label>
+          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
+            <input type="checkbox" checked={profile.showCollege !== false} onChange={(e) => updateProfile("showCollege", e.target.checked)} />
+            Show college on portfolio
           </label>
         </div>
       </motion.div>
@@ -4490,6 +4615,10 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
   const unlocked = allAchievements.filter((item) => achievements.includes(item.id)).slice(0, 8);
   const nextEvents = [...calendarEvents].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 3);
   const pendingReminders = reminders.filter((item) => !item.completed).slice(0, 3);
+  const skills = Array.isArray(profile?.skills) ? profile.skills : [];
+  const projects = Array.isArray(profile?.projects) ? profile.projects : [];
+  const showCollege = profile?.showCollege !== false;
+  const showRank = profile?.showRank !== false;
 
   const copyPortfolio = async () => {
     try {
@@ -4514,12 +4643,13 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
             <div>
               <p className="text-sm text-gray-500">Student OS Portfolio</p>
               <h2 className="text-3xl md:text-5xl font-black leading-tight">{profile?.name || user?.displayName || "Student"}</h2>
-              <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.degree || "Student"} {profile?.college ? `· ${profile.college}` : ""}</p>
+              <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.department || profile?.degree || "Student"} {profile?.year ? `· Year ${profile.year}` : ""} {showCollege && profile?.college ? `· ${profile.college}` : ""} {profile?.country ? `· ${profile.country}` : ""}</p>
               <p className="text-sm text-gray-500 mt-1">{profile?.showEmail ? user?.email : "Email hidden from public profile"}</p>
               <div className="flex flex-wrap gap-2 mt-3 text-xs font-bold">
                 {profile?.github && <a href={safeExternalUrl(profile.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white px-3 py-2 rounded-xl">GitHub</a>}
                 {profile?.linkedin && <a href={safeExternalUrl(profile.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-3 py-2 rounded-xl">LinkedIn</a>}
                 {profile?.portfolioWebsite && <a href={safeExternalUrl(profile.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white px-3 py-2 rounded-xl">Website</a>}
+                {profile?.resumeLink && <a href={safeExternalUrl(profile.resumeLink)} target="_blank" rel="noreferrer" className="bg-green-600 text-white px-3 py-2 rounded-xl">Resume</a>}
               </div>
             </div>
           </div>
@@ -4569,6 +4699,34 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
               <p className="text-xs text-gray-500">Study Kingdom</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="grid xl:grid-cols-2 gap-5">
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <h3 className="text-xl font-bold flex items-center gap-2"><Sparkles size={20} /> Skills</h3>
+          {skills.length ? (
+            <div className="flex flex-wrap gap-2 mt-4">
+              {skills.map((skill) => (
+                <span key={skill} className="px-3 py-2 rounded-full bg-blue-600/15 text-blue-600 text-sm font-bold">{skill}</span>
+              ))}
+            </div>
+          ) : <EmptyState emoji="🧠" title="No skills added" message="Add skills from Settings to make your portfolio stronger." />}
+        </div>
+
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={20} /> Projects</h3>
+          {projects.length ? (
+            <div className="space-y-3 mt-4">
+              {projects.map((project) => (
+                <div key={project.id} className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4" : "bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
+                  <p className="font-bold">{project.name}</p>
+                  {project.description && <p className="text-sm text-gray-500 mt-1">{project.description}</p>}
+                  {project.link && <a href={safeExternalUrl(project.link)} target="_blank" rel="noreferrer" className="text-sm text-blue-500 font-bold mt-2 inline-block">Open Project →</a>}
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState emoji="💻" title="No projects added" message="Add Student OS, ToolNest, Kove, or your coding projects from Settings." />}
         </div>
       </div>
 
