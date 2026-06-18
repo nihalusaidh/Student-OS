@@ -15,6 +15,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { supabase } from "./supabase";
 import Login from "./pages/Login";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -166,7 +167,8 @@ function StudentOSApp({ user }) {
   const [noteSubject, setNoteSubject] = useState("");
   const [noteUnit, setNoteUnit] = useState("");
   const [noteDescription, setNoteDescription] = useState("");
-  const [noteUrl, setNoteUrl] = useState("");
+  const [selectedNoteFile, setSelectedNoteFile] = useState(null);
+  const [noteUploading, setNoteUploading] = useState(false);
 
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
@@ -267,7 +269,8 @@ function StudentOSApp({ user }) {
     setNoteSubject("");
     setNoteUnit("");
     setNoteDescription("");
-    setNoteUrl("");
+    setSelectedNoteFile(null);
+    setNoteUploading(false);
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -1548,42 +1551,95 @@ function StudentOSApp({ user }) {
     }
   };
 
-  const uploadNote = async () => {
-    if (!noteTitle.trim() || !noteSubject.trim() || !noteUrl.trim()) {
-      return showToast("Missing Details", "Enter title, subject, and PDF/Drive link.", "⚠️");
+  const uploadPDFToSupabase = async (file) => {
+    if (!file) return null;
+
+    if (file.type !== "application/pdf") {
+      showToast("Only PDF Allowed", "Please choose a PDF file only.", "⚠️");
+      return null;
     }
 
-    const noteId = `${user.uid}_${Date.now()}`;
-    const payload = {
-      userId: user.uid,
-      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
-      college: profile?.college || "",
-      country: profile?.country || "",
-      degree: profile?.degree || "",
-      department: profile?.department || profile?.degree || "",
-      year: profile?.year || "",
-      title: noteTitle.trim(),
-      subject: noteSubject.trim(),
-      unit: noteUnit.trim(),
-      description: noteDescription.trim(),
-      url: safeExternalUrl(noteUrl),
-      downloads: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    if (file.size > 20 * 1024 * 1024) {
+      showToast("File Too Large", "Please upload a PDF below 20 MB.", "⚠️");
+      return null;
+    }
+
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `notes/${user.uid}/${Date.now()}-${safeFileName}`;
+
+    const { error } = await supabase.storage
+      .from("notes1")
+      .upload(filePath, file, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("Supabase PDF upload error:", error);
+      showToast("PDF Upload Failed", error.message || "Could not upload PDF.", "⚠️");
+      return null;
+    }
+
+    const { data } = supabase.storage
+      .from("notes1")
+      .getPublicUrl(filePath);
+
+    return {
+      publicUrl: data?.publicUrl || "",
+      filePath,
+      fileName: file.name,
+      fileSize: file.size,
     };
+  };
+
+  const uploadNote = async () => {
+    if (!noteTitle.trim() || !noteSubject.trim() || !selectedNoteFile) {
+      return showToast("Missing Details", "Enter title, subject, and choose a PDF file.", "⚠️");
+    }
+
+    setNoteUploading(true);
 
     try {
+      const uploadedFile = await uploadPDFToSupabase(selectedNoteFile);
+      if (!uploadedFile?.publicUrl) return;
+
+      const noteId = `${user.uid}_${Date.now()}`;
+      const payload = {
+        userId: user.uid,
+        displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+        college: profile?.college || "",
+        country: profile?.country || "",
+        degree: profile?.degree || "",
+        department: profile?.department || profile?.degree || "",
+        year: profile?.year || "",
+        title: noteTitle.trim(),
+        subject: noteSubject.trim(),
+        unit: noteUnit.trim(),
+        description: noteDescription.trim(),
+        url: uploadedFile.publicUrl,
+        pdfUrl: uploadedFile.publicUrl,
+        filePath: uploadedFile.filePath,
+        fileName: uploadedFile.fileName,
+        fileSize: uploadedFile.fileSize,
+        source: "supabase",
+        downloads: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
       await setDoc(doc(db, "notes", noteId), payload);
       setNoteTitle("");
       setNoteSubject("");
       setNoteUnit("");
       setNoteDescription("");
-      setNoteUrl("");
+      setSelectedNoteFile(null);
       addXp(25);
-      showToast("Notes Uploaded", "+25 XP. You helped the student community.", "📄");
+      showToast("PDF Uploaded", "+25 XP. Your notes are now available for students.", "📄");
     } catch (error) {
       console.error("Upload note error:", error);
-      showToast("Upload Failed", "Could not add notes link. Try again.", "⚠️");
+      showToast("Upload Failed", "Could not upload notes PDF. Try again.", "⚠️");
+    } finally {
+      setNoteUploading(false);
     }
   };
 
@@ -1605,30 +1661,41 @@ function StudentOSApp({ user }) {
     }
   };
 
-  const fulfillNoteRequest = async (request) => {
-    const link = window.prompt("Paste the notes PDF / Google Drive link to fulfill this request:");
-    if (!link) return;
+  const fulfillNoteRequest = async (request, file) => {
+    if (!file) {
+      return showToast("Choose PDF", "Select a PDF file to fulfill this request.", "⚠️");
+    }
 
-    const noteId = `${user.uid}_${Date.now()}`;
-    const payload = {
-      userId: user.uid,
-      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
-      college: profile?.college || "",
-      country: profile?.country || "",
-      degree: profile?.degree || "",
-      department: profile?.department || profile?.degree || "",
-      year: profile?.year || "",
-      title: `${request.subject || "Notes"} ${request.unit ? `- ${request.unit}` : ""}`.trim(),
-      subject: request.subject || "",
-      unit: request.unit || "",
-      description: `Uploaded to fulfill request from ${request.displayName || "student"}.`,
-      url: safeExternalUrl(link),
-      downloads: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
+    setNoteUploading(true);
 
     try {
+      const uploadedFile = await uploadPDFToSupabase(file);
+      if (!uploadedFile?.publicUrl) return;
+
+      const noteId = `${user.uid}_${Date.now()}`;
+      const payload = {
+        userId: user.uid,
+        displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+        college: profile?.college || "",
+        country: profile?.country || "",
+        degree: profile?.degree || "",
+        department: profile?.department || profile?.degree || "",
+        year: profile?.year || "",
+        title: `${request.subject || "Notes"} ${request.unit ? `- ${request.unit}` : ""}`.trim(),
+        subject: request.subject || "",
+        unit: request.unit || "",
+        description: `Uploaded to fulfill request from ${request.displayName || "student"}.`,
+        url: uploadedFile.publicUrl,
+        pdfUrl: uploadedFile.publicUrl,
+        filePath: uploadedFile.filePath,
+        fileName: uploadedFile.fileName,
+        fileSize: uploadedFile.fileSize,
+        source: "supabase",
+        downloads: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
       await setDoc(doc(db, "notes", noteId), payload);
       await setDoc(
         doc(db, "noteRequests", request.id),
@@ -1642,10 +1709,12 @@ function StudentOSApp({ user }) {
         { merge: true }
       );
       addXp(40);
-      showToast("Request Fulfilled", "+40 XP. Your notes helped another student.", "✅");
+      showToast("Request Fulfilled", "+40 XP. Your PDF helped another student.", "✅");
     } catch (error) {
       console.error("Fulfill request error:", error);
       showToast("Fulfill Failed", "Could not fulfill this request. Try again.", "⚠️");
+    } finally {
+      setNoteUploading(false);
     }
   };
 
@@ -2000,8 +2069,9 @@ function StudentOSApp({ user }) {
                 setNoteUnit={setNoteUnit}
                 noteDescription={noteDescription}
                 setNoteDescription={setNoteDescription}
-                noteUrl={noteUrl}
-                setNoteUrl={setNoteUrl}
+                selectedNoteFile={selectedNoteFile}
+                setSelectedNoteFile={setSelectedNoteFile}
+                noteUploading={noteUploading}
                 uploadNote={uploadNote}
                 downloadNote={downloadNote}
                 fulfillNoteRequest={fulfillNoteRequest}
@@ -3220,8 +3290,9 @@ function NotesHubPage({
   setNoteUnit,
   noteDescription,
   setNoteDescription,
-  noteUrl,
-  setNoteUrl,
+  selectedNoteFile,
+  setSelectedNoteFile,
+  noteUploading,
   uploadNote,
   downloadNote,
   fulfillNoteRequest,
@@ -3271,7 +3342,7 @@ function NotesHubPage({
         <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="text-3xl font-black flex items-center gap-3"><Rss /> Notes Hub</h2>
-            <p className="text-blue-100 mt-2 text-sm">Request notes, upload useful PDFs or Drive links, search study material, and help other students.</p>
+            <p className="text-blue-100 mt-2 text-sm">Request notes, upload useful PDFs directly, search study material, and help other students.</p>
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
             <NoteStat label="Notes" value={notes.length} />
@@ -3311,16 +3382,20 @@ function NotesHubPage({
 
       {notesTab === "upload" && (
         <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Upload Notes Link</h3>
-          <p className="text-sm text-gray-500 mt-1">For V1, paste a Google Drive / PDF link. Later we can add direct PDF upload + AI notes.</p>
+          <h3 className="text-xl font-black">Upload Notes PDF</h3>
+          <p className="text-sm text-gray-500 mt-1">Choose a PDF from your file manager. Student OS uploads it safely and creates a download link for other students.</p>
           <div className="grid md:grid-cols-2 gap-3 mt-4">
             <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Title, e.g. DSP Unit 3 Notes" className={inputClass} />
             <input value={noteSubject} onChange={(e) => setNoteSubject(e.target.value)} placeholder="Subject" className={inputClass} />
             <input value={noteUnit} onChange={(e) => setNoteUnit(e.target.value)} placeholder="Unit / Topic" className={inputClass} />
-            <input value={noteUrl} onChange={(e) => setNoteUrl(e.target.value)} placeholder="PDF / Google Drive link" className={inputClass} />
+            <label className={`${inputClass} cursor-pointer flex items-center justify-between gap-3`}>
+              <span className="truncate">{selectedNoteFile ? selectedNoteFile.name : "Choose PDF file"}</span>
+              <span className="font-bold text-blue-500">Browse</span>
+              <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => setSelectedNoteFile(e.target.files?.[0] || null)} />
+            </label>
           </div>
           <textarea value={noteDescription} onChange={(e) => setNoteDescription(e.target.value)} placeholder="Short description" className={`${inputClass} w-full mt-3 min-h-24`} />
-          <button onClick={uploadNote} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-bold">Upload Notes</button>
+          <button onClick={uploadNote} disabled={noteUploading} className="mt-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-5 py-3 rounded-xl font-bold">{noteUploading ? "Uploading PDF..." : "Upload PDF Notes"}</button>
         </div>
       )}
 
@@ -3414,7 +3489,7 @@ function NoteRequestCard({ request, isDark, fulfillNoteRequest }) {
         <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>👤 {request.displayName || "Student"}</div>
         <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🏫 {request.college || "College"}</div>
       </div>
-      <button onClick={() => fulfillNoteRequest(request)} className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold">Fulfill With Notes Link</button>
+      <label className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold text-center block cursor-pointer">Upload PDF to Fulfill<input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => fulfillNoteRequest(request, e.target.files?.[0] || null)} /></label>
     </motion.div>
   );
 }
