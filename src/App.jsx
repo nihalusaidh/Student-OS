@@ -174,6 +174,16 @@ function StudentOSApp({ user }) {
   const [notifications, setNotifications] = useState([]);
   const [notificationsStatus, setNotificationsStatus] = useState("loading");
 
+  const [opportunities, setOpportunities] = useState([]);
+  const [opportunitiesStatus, setOpportunitiesStatus] = useState("loading");
+  const [opportunityFilter, setOpportunityFilter] = useState("All");
+  const [opportunityType, setOpportunityType] = useState("Project");
+  const [opportunityTitle, setOpportunityTitle] = useState("");
+  const [opportunityDescription, setOpportunityDescription] = useState("");
+  const [opportunityLink, setOpportunityLink] = useState("");
+  const [opportunityDate, setOpportunityDate] = useState("");
+  const [opportunityLocation, setOpportunityLocation] = useState("");
+
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -279,6 +289,15 @@ function StudentOSApp({ user }) {
     setEditingRequest(null);
     setNotifications([]);
     setNotificationsStatus("loading");
+    setOpportunities([]);
+    setOpportunitiesStatus("loading");
+    setOpportunityFilter("All");
+    setOpportunityType("Project");
+    setOpportunityTitle("");
+    setOpportunityDescription("");
+    setOpportunityLink("");
+    setOpportunityDate("");
+    setOpportunityLocation("");
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -535,6 +554,36 @@ function StudentOSApp({ user }) {
   useEffect(() => {
     if (!user?.uid) return;
 
+    setOpportunitiesStatus("loading");
+
+    const opportunitiesQuery = query(
+      collection(db, "opportunities"),
+      orderBy("createdAt", "desc"),
+      firestoreLimit(150)
+    );
+
+    const unsubscribe = onSnapshot(
+      opportunitiesQuery,
+      (snapshot) => {
+        const rows = snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+        }));
+        setOpportunities(rows);
+        setOpportunitiesStatus("synced");
+      },
+      (error) => {
+        console.error("Opportunities sync error:", error);
+        setOpportunitiesStatus("error");
+      }
+    );
+
+    return unsubscribe;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
     const requestsQuery = query(
       collection(db, "connectionRequests"),
       orderBy("updatedAt", "desc")
@@ -643,6 +692,95 @@ function StudentOSApp({ user }) {
   };
 
   const unreadNotificationCount = notifications.filter((item) => !item.read).length;
+
+  const publishOpportunity = async () => {
+    if (!user?.uid) return;
+    if (!opportunityTitle.trim() || !opportunityDescription.trim()) {
+      return showToast("Missing Details", "Add title and description before posting.", "⚠️");
+    }
+
+    const postId = `${user.uid}_${Date.now()}`;
+    const payload = {
+      userId: user.uid,
+      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+      email: profile?.showEmail ? (user?.email || "") : "",
+      photoURL: user?.photoURL || "",
+      college: profile?.college || "",
+      country: profile?.country || "",
+      degree: profile?.degree || "",
+      department: profile?.department || profile?.degree || "",
+      year: profile?.year || "",
+      username: profile?.username || profile?.profileNameKey || "",
+      type: opportunityType,
+      title: opportunityTitle.trim(),
+      description: opportunityDescription.trim(),
+      link: opportunityLink.trim(),
+      date: opportunityDate,
+      location: opportunityLocation.trim(),
+      interested: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "opportunities", postId), payload);
+      setOpportunityTitle("");
+      setOpportunityDescription("");
+      setOpportunityLink("");
+      setOpportunityDate("");
+      setOpportunityLocation("");
+      addXp(15);
+      showToast("Opportunity Posted", "+15 XP. Your post can help other students.", "📢");
+    } catch (error) {
+      console.error("Publish opportunity error:", error);
+      showToast("Post Failed", "Could not publish the opportunity.", "⚠️");
+    }
+  };
+
+  const toggleOpportunityInterest = async (item) => {
+    if (!user?.uid || !item?.id) return;
+    const interested = Array.isArray(item.interested) ? item.interested : [];
+    const alreadyInterested = interested.includes(user.uid);
+
+    try {
+      await setDoc(
+        doc(db, "opportunities", item.id),
+        {
+          interested: alreadyInterested ? arrayRemove(user.uid) : arrayUnion(user.uid),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      if (!alreadyInterested && item.userId && item.userId !== user.uid) {
+        createNotification({
+          userId: item.userId,
+          type: "opportunity",
+          title: "Someone is Interested",
+          message: `${profile?.name || user?.displayName || "A student"} is interested in: ${item.title}`,
+          emoji: "🙋",
+          actionPage: "opportunities",
+          meta: { opportunityId: item.id },
+        });
+      }
+    } catch (error) {
+      console.error("Opportunity interest error:", error);
+      showToast("Update Failed", "Could not update interest.", "⚠️");
+    }
+  };
+
+  const deleteOpportunity = async (item) => {
+    if (!item?.id || item.userId !== user.uid) return;
+    if (!window.confirm("Delete this opportunity post?")) return;
+
+    try {
+      await deleteDoc(doc(db, "opportunities", item.id));
+      showToast("Post Deleted", "Opportunity removed successfully.", "🗑️");
+    } catch (error) {
+      console.error("Delete opportunity error:", error);
+      showToast("Delete Failed", "Could not delete this post.", "⚠️");
+    }
+  };
 
   const getConnectionRequestId = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
@@ -2016,6 +2154,7 @@ function StudentOSApp({ user }) {
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
           <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
+          <NavItem active={activePage === "opportunities"} onClick={() => setActivePage("opportunities")} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
           <NavItem active={activePage === "social"} onClick={() => setActivePage("social")} icon={<Users size={20} />} label="Students" navHover={navHover} />
           <NavItem active={activePage === "portfolio"} onClick={() => setActivePage("portfolio")} icon={<GraduationCap size={20} />} label="Portfolio" navHover={navHover} />
           <NavItem active={activePage === "leaderboard"} onClick={() => setActivePage("leaderboard")} icon={<Trophy size={20} />} label="Leaderboard" navHover={navHover} />
@@ -2369,6 +2508,39 @@ function StudentOSApp({ user }) {
                 uploadNote={uploadNote}
                 downloadNote={downloadNote}
                 fulfillNoteRequest={fulfillNoteRequest}
+              />
+            </PageMotion>
+          )}
+
+          {activePage === "opportunities" && (
+            <PageMotion key="opportunities">
+              <OpportunitiesPage
+                isDark={isDark}
+                cardClass={cardClass}
+                inputClass={inputClass}
+                opportunities={opportunities}
+                opportunitiesStatus={opportunitiesStatus}
+                opportunityFilter={opportunityFilter}
+                setOpportunityFilter={setOpportunityFilter}
+                opportunityType={opportunityType}
+                setOpportunityType={setOpportunityType}
+                opportunityTitle={opportunityTitle}
+                setOpportunityTitle={setOpportunityTitle}
+                opportunityDescription={opportunityDescription}
+                setOpportunityDescription={setOpportunityDescription}
+                opportunityLink={opportunityLink}
+                setOpportunityLink={setOpportunityLink}
+                opportunityDate={opportunityDate}
+                setOpportunityDate={setOpportunityDate}
+                opportunityLocation={opportunityLocation}
+                setOpportunityLocation={setOpportunityLocation}
+                publishOpportunity={publishOpportunity}
+                toggleOpportunityInterest={toggleOpportunityInterest}
+                deleteOpportunity={deleteOpportunity}
+                followStudent={followStudent}
+                setSelectedSocialProfile={setSelectedSocialProfile}
+                leaderboard={leaderboard}
+                user={user}
               />
             </PageMotion>
           )}
@@ -3293,6 +3465,185 @@ function NavItem({ active, onClick, icon, label, navHover }) {
   return <button onClick={onClick} className={`w-full px-4 py-3 rounded-xl flex items-center gap-3 text-left transition ${active ? "bg-blue-600 text-white" : navHover}`}>{icon} {label}</button>;
 }
 
+
+
+function OpportunitiesPage({
+  isDark,
+  cardClass,
+  inputClass,
+  opportunities,
+  opportunitiesStatus,
+  opportunityFilter,
+  setOpportunityFilter,
+  opportunityType,
+  setOpportunityType,
+  opportunityTitle,
+  setOpportunityTitle,
+  opportunityDescription,
+  setOpportunityDescription,
+  opportunityLink,
+  setOpportunityLink,
+  opportunityDate,
+  setOpportunityDate,
+  opportunityLocation,
+  setOpportunityLocation,
+  publishOpportunity,
+  toggleOpportunityInterest,
+  deleteOpportunity,
+  followStudent,
+  setSelectedSocialProfile,
+  leaderboard,
+  user,
+}) {
+  const filters = ["All", "Internship", "Project", "Event", "Hackathon", "Team", "Achievement", "Competition"];
+  const typeOptions = ["Internship", "Project", "Event", "Hackathon", "Team", "Achievement", "Competition"];
+
+  const typeMeta = {
+    Internship: { emoji: "🚀", color: "bg-orange-500" },
+    Project: { emoji: "💻", color: "bg-blue-600" },
+    Event: { emoji: "🎤", color: "bg-purple-600" },
+    Hackathon: { emoji: "⚡", color: "bg-yellow-500" },
+    Team: { emoji: "🤝", color: "bg-green-600" },
+    Achievement: { emoji: "🏆", color: "bg-pink-600" },
+    Competition: { emoji: "🥇", color: "bg-indigo-600" },
+  };
+
+  const getTime = (value) => {
+    const date = value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    if (!date) return "Just now";
+    const diffMin = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (diffMin < 1) return "Just now";
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+  };
+
+  const filtered = opportunities.filter((item) => {
+    if (opportunityFilter !== "All" && item.type !== opportunityFilter) return false;
+    return true;
+  });
+
+  const findStudent = (item) => leaderboard.find((row) => row.id === item.userId || row.uid === item.userId) || {
+    id: item.userId,
+    displayName: item.displayName,
+    photoURL: item.photoURL,
+    college: item.college,
+    country: item.country,
+    department: item.department,
+    degree: item.degree,
+    year: item.year,
+    username: item.username,
+    email: item.email,
+  };
+
+  return (
+    <section className="mt-5 space-y-5">
+      <div className="relative overflow-hidden rounded-3xl p-5 md:p-6 bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950 text-white border border-white/10 shadow-2xl">
+        <motion.div animate={{ y: [0, -14, 0], rotate: [0, 7, 0] }} transition={{ repeat: Infinity, duration: 5 }} className="absolute right-10 top-8 text-6xl opacity-20">📢</motion.div>
+        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-blue-200">Student Opportunities Network</p>
+            <h2 className="text-3xl md:text-4xl font-black mt-1">Opportunities Feed</h2>
+            <p className="text-blue-100 mt-2 max-w-2xl">Post internships, projects, hackathons, events, achievements, and team requests. Keep it academic and career-focused.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="bg-white/10 border border-white/10 rounded-2xl px-4 py-3"><p className="text-xs text-blue-100">Posts</p><p className="text-2xl font-black">{opportunities.length}</p></div>
+            <div className="bg-white/10 border border-white/10 rounded-2xl px-4 py-3"><p className="text-xs text-blue-100">Types</p><p className="text-2xl font-black">7</p></div>
+            <div className="bg-white/10 border border-white/10 rounded-2xl px-4 py-3"><p className="text-xs text-blue-100">Mode</p><p className="text-lg font-black">Career</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${cardClass} p-4 md:p-5 rounded-2xl space-y-4`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-black">Create Opportunity Post</h3>
+            <p className={isDark ? "text-sm text-slate-300" : "text-sm text-gray-600"}>Only post useful academic, project, career, event, or achievement updates.</p>
+          </div>
+          <select className={`${inputClass} md:w-56`} value={opportunityType} onChange={(e) => setOpportunityType(e.target.value)}>
+            {typeOptions.map((type) => <option key={type} value={type} className="text-slate-900">{typeMeta[type]?.emoji} {type}</option>)}
+          </select>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <input className={inputClass} value={opportunityTitle} onChange={(e) => setOpportunityTitle(e.target.value)} placeholder="Title: Looking for React teammate / Hackathon open" />
+          <input className={inputClass} value={opportunityLink} onChange={(e) => setOpportunityLink(e.target.value)} placeholder="Optional link: registration, GitHub, LinkedIn, form" />
+          <input className={inputClass} type="date" value={opportunityDate} onChange={(e) => setOpportunityDate(e.target.value)} />
+          <input className={inputClass} value={opportunityLocation} onChange={(e) => setOpportunityLocation(e.target.value)} placeholder="Location / online / college" />
+        </div>
+        <textarea className={`${inputClass} w-full min-h-[110px]`} value={opportunityDescription} onChange={(e) => setOpportunityDescription(e.target.value)} placeholder="Describe the opportunity clearly. Example: We are building a smart attendance system and need a Firebase teammate." />
+        <button onClick={publishOpportunity} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-black">Post Opportunity</button>
+      </div>
+
+      <div className={`${cardClass} p-4 rounded-2xl overflow-x-auto`}>
+        <div className="flex gap-2 min-w-max">
+          {filters.map((filter) => (
+            <button key={filter} onClick={() => setOpportunityFilter(filter)} className={`px-4 py-2 rounded-xl font-bold text-sm transition ${opportunityFilter === filter ? "bg-blue-600 text-white" : isDark ? "bg-white/10 text-slate-200 hover:bg-white/20" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+              {filter}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {opportunitiesStatus === "loading" ? (
+        <div className={`${cardClass} p-8 rounded-2xl text-center`}><p className="text-4xl">⏳</p><p className="font-bold mt-3">Loading opportunities...</p></div>
+      ) : filtered.length === 0 ? (
+        <div className={`${cardClass} p-8 rounded-2xl text-center`}><p className="text-5xl">📭</p><h3 className="text-xl font-black mt-3">No opportunities yet</h3><p className={isDark ? "text-sm text-slate-300 mt-2" : "text-sm text-gray-500 mt-2"}>Be the first to share an internship, project, event, or team request.</p></div>
+      ) : (
+        <div className="grid lg:grid-cols-2 gap-4">
+          {filtered.map((item) => {
+            const meta = typeMeta[item.type] || { emoji: "📢", color: "bg-blue-600" };
+            const interested = Array.isArray(item.interested) ? item.interested : [];
+            const isMine = item.userId === user.uid;
+            const student = findStudent(item);
+            return (
+              <motion.div key={item.id} whileHover={{ y: -3 }} className={`${cardClass} rounded-3xl p-5 border ${isDark ? "border-white/10" : "border-gray-100"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-12 h-12 rounded-2xl ${meta.color} text-white flex items-center justify-center text-2xl shadow-lg`}>{meta.emoji}</div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={isDark ? "text-xs px-2 py-1 rounded-full bg-white/10" : "text-xs px-2 py-1 rounded-full bg-gray-100"}>{item.type || "Opportunity"}</span>
+                        <span className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>{getTime(item.createdAt)}</span>
+                      </div>
+                      <h3 className="text-xl font-black mt-2">{item.title}</h3>
+                      <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-600 mt-1"}>{item.description}</p>
+                    </div>
+                  </div>
+                  {isMine && <button onClick={() => deleteOpportunity(item)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-xl font-bold text-sm">Delete</button>}
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-2 mt-4">
+                  <InfoPill isDark={isDark} icon="👤" text={item.displayName || "Student"} />
+                  <InfoPill isDark={isDark} icon="🏫" text={item.college || "College not set"} />
+                  <InfoPill isDark={isDark} icon="🎓" text={item.department || item.degree || "Department"} />
+                  <InfoPill isDark={isDark} icon="🌎" text={item.country || "Country"} />
+                  {item.date && <InfoPill isDark={isDark} icon="📅" text={item.date} />}
+                  {item.location && <InfoPill isDark={isDark} icon="📍" text={item.location} />}
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <button onClick={() => toggleOpportunityInterest(item)} className={`px-4 py-2 rounded-xl font-bold text-sm ${interested.includes(user.uid) ? "bg-green-600 text-white" : "bg-blue-600 text-white"}`}>
+                    {interested.includes(user.uid) ? "Interested ✓" : "I'm Interested"} · {interested.length}
+                  </button>
+                  {item.link && <a href={item.link} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm">Open Link</a>}
+                  {!isMine && <button onClick={() => followStudent(student)} className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm">Connect</button>}
+                  <button onClick={() => setSelectedSocialProfile(student)} className={isDark ? "px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 font-bold text-sm" : "px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 font-bold text-sm"}>View Profile</button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InfoPill({ isDark, icon, text }) {
+  return <div className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-300" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600"}>{icon} {text}</div>;
+}
 
 function NotificationsPage({ isDark, cardClass, notifications, notificationsStatus, unreadNotificationCount, markNotificationRead, markAllNotificationsRead, setActivePage }) {
   const formatNotificationTime = (value) => {
@@ -4937,7 +5288,8 @@ function MobileBottomNav({ activePage, setActivePage, isDark }) {
     { id: "ai", label: "AI", icon: <Bot size={21} /> },
     { id: "achievements", label: "Badges", icon: <Trophy size={21} /> },
     { id: "analytics", label: "Stats", icon: <TrendingUp size={21} /> },
-    { id: "feed", label: "Feed", icon: <Rss size={21} /> },
+    { id: "feed", label: "Notes", icon: <Rss size={21} /> },
+    { id: "opportunities", label: "Opp", icon: <TrendingUp size={21} /> },
     { id: "social", label: "Social", icon: <Users size={21} /> },
     { id: "portfolio", label: "Portfolio", icon: <GraduationCap size={21} /> },
     { id: "leaderboard", label: "Rank", icon: <Trophy size={21} /> },
