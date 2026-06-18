@@ -75,12 +75,6 @@ function StudentOSApp({ user }) {
       linkedin: "",
       portfolioWebsite: "",
       showEmail: false,
-      resumeLink: "",
-      skills: [],
-      projects: [],
-      publicProfile: true,
-      showRank: true,
-      showCollege: true,
       semester: "Semester 3",
       targetAttendance: 75,
     };
@@ -177,6 +171,8 @@ function StudentOSApp({ user }) {
   const [noteUploading, setNoteUploading] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const [editingRequest, setEditingRequest] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsStatus, setNotificationsStatus] = useState("loading");
 
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
@@ -212,12 +208,6 @@ function StudentOSApp({ user }) {
       linkedin: "",
       portfolioWebsite: "",
       showEmail: false,
-      resumeLink: "",
-      skills: [],
-      projects: [],
-      publicProfile: true,
-      showRank: true,
-      showCollege: true,
       semester: "Semester 1",
       targetAttendance: 75,
     });
@@ -287,6 +277,8 @@ function StudentOSApp({ user }) {
     setNoteUploading(false);
     setEditingNote(null);
     setEditingRequest(null);
+    setNotifications([]);
+    setNotificationsStatus("loading");
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -336,12 +328,6 @@ function StudentOSApp({ user }) {
               linkedin: data.profile.linkedin || prev.linkedin || "",
               portfolioWebsite: data.profile.portfolioWebsite || prev.portfolioWebsite || "",
               showEmail: typeof data.profile.showEmail === "boolean" ? data.profile.showEmail : Boolean(prev.showEmail),
-              resumeLink: data.profile.resumeLink || prev.resumeLink || "",
-              skills: Array.isArray(data.profile.skills) ? data.profile.skills : (Array.isArray(prev.skills) ? prev.skills : []),
-              projects: Array.isArray(data.profile.projects) ? data.profile.projects : (Array.isArray(prev.projects) ? prev.projects : []),
-              publicProfile: typeof data.profile.publicProfile === "boolean" ? data.profile.publicProfile : (typeof prev.publicProfile === "boolean" ? prev.publicProfile : true),
-              showRank: typeof data.profile.showRank === "boolean" ? data.profile.showRank : (typeof prev.showRank === "boolean" ? prev.showRank : true),
-              showCollege: typeof data.profile.showCollege === "boolean" ? data.profile.showCollege : (typeof prev.showCollege === "boolean" ? prev.showCollege : true),
             }));
           }
           if (typeof data.xp === "number") setXp(data.xp);
@@ -519,6 +505,36 @@ function StudentOSApp({ user }) {
   useEffect(() => {
     if (!user?.uid) return;
 
+    setNotificationsStatus("loading");
+
+    const notificationsQuery = query(
+      collection(db, "notifications"),
+      orderBy("createdAt", "desc"),
+      firestoreLimit(100)
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const rows = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .filter((item) => item.userId === user.uid);
+
+        setNotifications(rows);
+        setNotificationsStatus("synced");
+      },
+      (error) => {
+        console.error("Notifications sync error:", error);
+        setNotificationsStatus("error");
+      }
+    );
+
+    return unsubscribe;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
     const requestsQuery = query(
       collection(db, "connectionRequests"),
       orderBy("updatedAt", "desc")
@@ -552,9 +568,6 @@ function StudentOSApp({ user }) {
             linkedin: isSender ? item.toLinkedin : item.fromLinkedin,
             portfolioWebsite: isSender ? item.toPortfolioWebsite : item.fromPortfolioWebsite,
             showEmail: isSender ? item.toShowEmail : item.fromShowEmail,
-            resumeLink: isSender ? item.toResumeLink : item.fromResumeLink,
-            skills: isSender ? item.toSkills || [] : item.fromSkills || [],
-            projects: isSender ? item.toProjects || [] : item.fromProjects || [],
             score: Number(isSender ? item.toScore || 0 : item.fromScore || 0),
             rank: isSender ? item.toRank || null : item.fromRank || null,
             connectedAt: item.acceptedAt || item.updatedAt || "",
@@ -571,6 +584,65 @@ function StudentOSApp({ user }) {
 
     return unsubscribe;
   }, [user?.uid]);
+
+  const createNotification = async ({ userId, type = "general", title, message, emoji = "🔔", actionPage = "notifications", meta = {} }) => {
+    if (!userId || !title) return;
+
+    const notificationId = `${userId}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    try {
+      await setDoc(doc(db, "notifications", notificationId), {
+        userId,
+        type,
+        title,
+        message: message || "",
+        emoji,
+        read: false,
+        actionPage,
+        meta,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Create notification error:", error);
+    }
+  };
+
+  const markNotificationRead = async (notification) => {
+    if (!notification?.id || notification.userId !== user.uid) return;
+
+    try {
+      await setDoc(
+        doc(db, "notifications", notification.id),
+        { read: true, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Mark notification read error:", error);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    const unread = notifications.filter((item) => !item.read);
+
+    try {
+      await Promise.all(
+        unread.map((item) =>
+          setDoc(
+            doc(db, "notifications", item.id),
+            { read: true, updatedAt: serverTimestamp() },
+            { merge: true }
+          )
+        )
+      );
+      showToast("Notifications Cleared", "All notifications marked as read.", "✅");
+    } catch (error) {
+      console.error("Mark all notifications read error:", error);
+      showToast("Update Failed", "Could not mark notifications as read.", "⚠️");
+    }
+  };
+
+  const unreadNotificationCount = notifications.filter((item) => !item.read).length;
 
   const getConnectionRequestId = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
@@ -598,9 +670,6 @@ function StudentOSApp({ user }) {
           fromLinkedin: profile?.linkedin || "",
           fromPortfolioWebsite: profile?.portfolioWebsite || "",
           fromShowEmail: Boolean(profile?.showEmail),
-          fromResumeLink: profile?.resumeLink || "",
-          fromSkills: Array.isArray(profile?.skills) ? profile.skills : [],
-          fromProjects: Array.isArray(profile?.projects) ? profile.projects : [],
           fromScore: getLeaderboardScoreData().score,
           fromRank: null,
           toUid: student.id,
@@ -617,9 +686,6 @@ function StudentOSApp({ user }) {
           toLinkedin: student.linkedin || "",
           toPortfolioWebsite: student.portfolioWebsite || "",
           toShowEmail: Boolean(student.showEmail),
-          toResumeLink: student.resumeLink || "",
-          toSkills: Array.isArray(student.skills) ? student.skills : [],
-          toProjects: Array.isArray(student.projects) ? student.projects : [],
           toScore: Number(student.score || 0),
           toRank: student.rank || null,
           status: "pending",
@@ -629,6 +695,15 @@ function StudentOSApp({ user }) {
         { merge: true }
       );
       showToast("Request Sent", `Connection request sent to ${student.displayName || "student"}.`, "🤝");
+      createNotification({
+        userId: student.id,
+        type: "connection",
+        title: "New Connection Request",
+        message: `${profile?.name || user?.displayName || "A student"} sent you a connection request.`,
+        emoji: "🤝",
+        actionPage: "social",
+        meta: { fromUid: user.uid },
+      });
     } catch (error) {
       console.error("Send connection request error:", error);
       showToast("Request Failed", "Could not send connection request. Try again.", "⚠️");
@@ -647,15 +722,21 @@ function StudentOSApp({ user }) {
           toLinkedin: profile?.linkedin || request.toLinkedin || "",
           toPortfolioWebsite: profile?.portfolioWebsite || request.toPortfolioWebsite || "",
           toShowEmail: Boolean(profile?.showEmail),
-          toResumeLink: profile?.resumeLink || "",
-          toSkills: Array.isArray(profile?.skills) ? profile.skills : [],
-          toProjects: Array.isArray(profile?.projects) ? profile.projects : [],
           acceptedAt: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
       showToast("Connection Accepted", `${request.fromName || "Student"} is now connected with you.`, "✅");
+      createNotification({
+        userId: request.fromUid,
+        type: "connection",
+        title: "Connection Accepted",
+        message: `${profile?.name || user?.displayName || "A student"} accepted your connection request.`,
+        emoji: "✅",
+        actionPage: "social",
+        meta: { toUid: user.uid },
+      });
     } catch (error) {
       console.error("Accept connection error:", error);
       showToast("Accept Failed", "Could not accept the request. Try again.", "⚠️");
@@ -864,12 +945,6 @@ function StudentOSApp({ user }) {
       linkedin: profile?.linkedin || "",
       portfolioWebsite: profile?.portfolioWebsite || "",
       showEmail: Boolean(profile?.showEmail),
-      resumeLink: profile?.resumeLink || "",
-      skills: Array.isArray(profile?.skills) ? profile.skills : [],
-      projects: Array.isArray(profile?.projects) ? profile.projects : [],
-      publicProfile: typeof profile?.publicProfile === "boolean" ? profile.publicProfile : true,
-      showRank: typeof profile?.showRank === "boolean" ? profile.showRank : true,
-      showCollege: typeof profile?.showCollege === "boolean" ? profile.showCollege : true,
       xp: Number(xp || 0),
       forest: Number(forest || 0),
       focusSessions: Number(forest || 0),
@@ -995,6 +1070,15 @@ function StudentOSApp({ user }) {
       return;
     }
     setAchievements((prev) => [...prev, id]);
+    createNotification({
+      userId: user?.uid,
+      type: "achievement",
+      title,
+      message: description,
+      emoji,
+      actionPage: "achievements",
+      meta: { achievementId: id },
+    });
     if (type === "milestone") return setMilestonePopup({ title, emoji, description });
     if (type === "toast") return showToast(title, description, emoji);
     setAchievementPopup({ title, emoji, description });
@@ -1585,6 +1669,15 @@ function StudentOSApp({ user }) {
       setRequestMessage("");
       addXp(10);
       showToast("Notes Requested", "+10 XP. Your request is visible in Notes Hub.", "📢");
+      createNotification({
+        userId: user.uid,
+        type: "notes",
+        title: "Notes Request Posted",
+        message: `Your request for ${payload.subject}${payload.unit ? ` - ${payload.unit}` : ""} is now visible.`,
+        emoji: "📢",
+        actionPage: "feed",
+        meta: { requestId },
+      });
     } catch (error) {
       console.error("Add note request error:", error);
       showToast("Request Failed", "Could not post notes request. Try again.", "⚠️");
@@ -1675,6 +1768,15 @@ function StudentOSApp({ user }) {
       setSelectedNoteFile(null);
       addXp(25);
       showToast("PDF Uploaded", "+25 XP. Your notes are now available for students.", "📄");
+      createNotification({
+        userId: user.uid,
+        type: "notes",
+        title: "Notes Uploaded",
+        message: `${payload.title} was uploaded successfully.`,
+        emoji: "📄",
+        actionPage: "feed",
+        meta: { noteId },
+      });
     } catch (error) {
       console.error("Upload note error:", error);
       showToast("Upload Failed", "Could not upload notes PDF. Try again.", "⚠️");
@@ -1868,6 +1970,15 @@ function StudentOSApp({ user }) {
       );
       addXp(40);
       showToast("Request Fulfilled", "+40 XP. Your PDF helped another student.", "✅");
+      createNotification({
+        userId: request.userId,
+        type: "notes",
+        title: "Your Notes Request Was Fulfilled",
+        message: `${payload.displayName} uploaded ${payload.title}.`,
+        emoji: "📚",
+        actionPage: "feed",
+        meta: { requestId: request.id, noteId },
+      });
     } catch (error) {
       console.error("Fulfill request error:", error);
       showToast("Fulfill Failed", "Could not fulfill this request. Try again.", "⚠️");
@@ -1900,6 +2011,7 @@ function StudentOSApp({ user }) {
           <NavItem active={activePage === "semester"} onClick={() => setActivePage("semester")} icon={<GraduationCap size={20} />} label="Semester" navHover={navHover} />
           <NavItem active={activePage === "calendar"} onClick={() => setActivePage("calendar")} icon={<CalendarDays size={20} />} label="Calendar" navHover={navHover} />
           <NavItem active={activePage === "reminders"} onClick={() => setActivePage("reminders")} icon={<Bell size={20} />} label="Reminders" navHover={navHover} />
+          <NavItem active={activePage === "notifications"} onClick={() => setActivePage("notifications")} icon={<Bell size={20} />} label={`Notifications${unreadNotificationCount ? ` (${unreadNotificationCount})` : ""}`} navHover={navHover} />
           <NavItem active={activePage === "ai"} onClick={() => setActivePage("ai")} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
@@ -1970,7 +2082,7 @@ function StudentOSApp({ user }) {
         </motion.section>
 
         <div className="hidden">
-          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "ai", "achievements", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
+          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "notifications", "ai", "achievements", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
             <button
               key={page}
               onClick={() => setActivePage(page)}
@@ -2138,6 +2250,21 @@ function StudentOSApp({ user }) {
                 getReminderStatus={getReminderStatus}
                 completeReminder={completeReminder}
                 deleteReminder={deleteReminder}
+              />
+            </PageMotion>
+          )}
+
+          {activePage === "notifications" && (
+            <PageMotion key="notifications">
+              <NotificationsPage
+                isDark={isDark}
+                cardClass={cardClass}
+                notifications={notifications}
+                notificationsStatus={notificationsStatus}
+                unreadNotificationCount={unreadNotificationCount}
+                markNotificationRead={markNotificationRead}
+                markAllNotificationsRead={markAllNotificationsRead}
+                setActivePage={setActivePage}
               />
             </PageMotion>
           )}
@@ -3166,13 +3293,131 @@ function NavItem({ active, onClick, icon, label, navHover }) {
   return <button onClick={onClick} className={`w-full px-4 py-3 rounded-xl flex items-center gap-3 text-left transition ${active ? "bg-blue-600 text-white" : navHover}`}>{icon} {label}</button>;
 }
 
+
+function NotificationsPage({ isDark, cardClass, notifications, notificationsStatus, unreadNotificationCount, markNotificationRead, markAllNotificationsRead, setActivePage }) {
+  const formatNotificationTime = (value) => {
+    const date = value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    if (!date) return "Just now";
+
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "Just now";
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+  };
+
+  const grouped = {
+    unread: notifications.filter((item) => !item.read),
+    read: notifications.filter((item) => item.read),
+  };
+
+  const NotificationCard = ({ item }) => (
+    <button
+      onClick={() => {
+        markNotificationRead(item);
+        if (item.actionPage) setActivePage(item.actionPage);
+      }}
+      className={`w-full text-left p-4 rounded-2xl border transition ${
+        item.read
+          ? isDark
+            ? "bg-white/5 border-white/10 hover:bg-white/10"
+            : "bg-white border-gray-100 hover:bg-gray-50"
+          : isDark
+          ? "bg-blue-500/15 border-blue-300/30 hover:bg-blue-500/20"
+          : "bg-blue-50 border-blue-200 hover:bg-blue-100"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="text-2xl mt-1">{item.emoji || "🔔"}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="font-black text-sm md:text-base">{item.title}</h3>
+            {!item.read && <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-blue-500 mt-1.5" />}
+          </div>
+          {item.message && <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-600 mt-1"}>{item.message}</p>}
+          <div className="flex items-center gap-2 mt-2">
+            <span className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>{formatNotificationTime(item.createdAt)}</span>
+            {item.type && <span className={isDark ? "text-xs px-2 py-0.5 rounded-full bg-white/10 text-slate-300" : "text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"}>{item.type}</span>}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+
+  return (
+    <section className="mt-5 space-y-5">
+      <div className="bg-gradient-to-br from-indigo-950 via-blue-950 to-slate-950 text-white p-5 rounded-3xl shadow-2xl border border-white/10 overflow-hidden relative">
+        <motion.div animate={{ y: [0, -14, 0], rotate: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 5 }} className="absolute right-8 top-8 text-5xl opacity-20">🔔</motion.div>
+        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-black flex items-center gap-3"><Bell /> Notifications</h2>
+            <p className="text-blue-100 mt-2 text-sm">Track notes, connections, achievements, and important Student OS updates.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="bg-white/10 border border-white/10 px-4 py-3 rounded-2xl min-w-24">
+              <p className="text-xs text-blue-100">Unread</p>
+              <p className="text-xl font-black">{unreadNotificationCount}</p>
+            </div>
+            <div className="bg-white/10 border border-white/10 px-4 py-3 rounded-2xl min-w-24">
+              <p className="text-xs text-blue-100">Total</p>
+              <p className="text-xl font-black">{notifications.length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${cardClass} p-4 rounded-2xl flex flex-col md:flex-row md:items-center md:justify-between gap-3`}>
+        <div>
+          <h3 className="font-black text-lg">Notification Center</h3>
+          <p className={isDark ? "text-sm text-slate-300" : "text-sm text-gray-600"}>Open a notification to jump to the related page.</p>
+        </div>
+        <button
+          onClick={markAllNotificationsRead}
+          disabled={!unreadNotificationCount}
+          className={`px-4 py-2 rounded-xl font-bold text-sm ${unreadNotificationCount ? "bg-blue-600 hover:bg-blue-700 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-gray-100 text-gray-400"}`}
+        >
+          Mark All Read
+        </button>
+      </div>
+
+      {notificationsStatus === "loading" ? (
+        <div className={`${cardClass} p-8 rounded-2xl text-center`}>
+          <p className="text-4xl">⏳</p>
+          <p className="font-bold mt-3">Loading notifications...</p>
+        </div>
+      ) : notifications.length === 0 ? (
+        <div className={`${cardClass} p-8 rounded-2xl text-center`}>
+          <p className="text-5xl">🔕</p>
+          <h3 className="text-xl font-bold mt-3">No notifications yet</h3>
+          <p className={isDark ? "text-sm text-slate-300 mt-2" : "text-sm text-gray-500 mt-2"}>Connection requests, fulfilled notes, achievements, and ranking updates will appear here.</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {grouped.unread.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-black text-lg">Unread</h3>
+              {grouped.unread.map((item) => <NotificationCard key={item.id} item={item} />)}
+            </div>
+          )}
+
+          {grouped.read.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-black text-lg">Earlier</h3>
+              {grouped.read.map((item) => <NotificationCard key={item.id} item={item} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targetGpa, setTargetGpa, currentGpa, setCurrentGpa, semesterName, setSemesterName, exportStudentOSData, importStudentOSData, user, cloudStatus, cloudError, onLogout, saveProfileName }) {
   const [nameDraft, setNameDraft] = useState(profile?.name || "");
   const [nameSaving, setNameSaving] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [projectLink, setProjectLink] = useState("");
 
   useEffect(() => {
     setNameDraft(profile?.name || "");
@@ -3186,40 +3431,6 @@ function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targ
     setNameSaving(true);
     await saveProfileName?.(nameDraft);
     setNameSaving(false);
-  };
-
-  const addSkill = () => {
-    const skill = skillInput.trim();
-    if (!skill) return;
-    const existing = Array.isArray(profile.skills) ? profile.skills : [];
-    if (existing.map((item) => item.toLowerCase()).includes(skill.toLowerCase())) {
-      setSkillInput("");
-      return;
-    }
-    updateProfile("skills", [...existing, skill]);
-    setSkillInput("");
-  };
-
-  const removeSkill = (skill) => {
-    updateProfile("skills", (profile.skills || []).filter((item) => item !== skill));
-  };
-
-  const addProject = () => {
-    if (!projectName.trim()) return;
-    const newProject = {
-      id: Date.now(),
-      name: projectName.trim(),
-      description: projectDescription.trim(),
-      link: projectLink.trim(),
-    };
-    updateProfile("projects", [...(Array.isArray(profile.projects) ? profile.projects : []), newProject]);
-    setProjectName("");
-    setProjectDescription("");
-    setProjectLink("");
-  };
-
-  const removeProject = (id) => {
-    updateProfile("projects", (profile.projects || []).filter((project) => project.id !== id));
   };
 
   return (
@@ -3250,60 +3461,9 @@ function SettingsPage({ isDark, cardClass, inputClass, profile, setProfile, targ
           <input value={profile.github || ""} onChange={(e) => updateProfile("github", e.target.value)} placeholder="GitHub URL (optional)" className={inputClass} />
           <input value={profile.linkedin || ""} onChange={(e) => updateProfile("linkedin", e.target.value)} placeholder="LinkedIn URL (optional)" className={inputClass} />
           <input value={profile.portfolioWebsite || ""} onChange={(e) => updateProfile("portfolioWebsite", e.target.value)} placeholder="Portfolio / Website URL (optional)" className={inputClass} />
-          <input value={profile.resumeLink || ""} onChange={(e) => updateProfile("resumeLink", e.target.value)} placeholder="Resume PDF link (optional)" className={inputClass} />
-
-          <div className={isDark ? "md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4" : "md:col-span-2 bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
-            <h4 className="font-bold mb-3">Skills</h4>
-            <div className="grid md:grid-cols-[1fr_auto] gap-2">
-              <input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSkill()} placeholder="Add skill, e.g. React, Python, C" className={inputClass} />
-              <button type="button" onClick={addSkill} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold">Add Skill</button>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {(profile.skills || []).length ? (profile.skills || []).map((skill) => (
-                <button key={skill} type="button" onClick={() => removeSkill(skill)} className="px-3 py-1 rounded-full bg-blue-600/15 text-blue-600 text-xs font-bold">
-                  {skill} ×
-                </button>
-              )) : <p className="text-sm text-gray-500">No skills added yet.</p>}
-            </div>
-          </div>
-
-          <div className={isDark ? "md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4" : "md:col-span-2 bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
-            <h4 className="font-bold mb-3">Projects</h4>
-            <div className="grid md:grid-cols-3 gap-2">
-              <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Project name" className={inputClass} />
-              <input value={projectDescription} onChange={(e) => setProjectDescription(e.target.value)} placeholder="Short description" className={inputClass} />
-              <input value={projectLink} onChange={(e) => setProjectLink(e.target.value)} placeholder="Project link" className={inputClass} />
-            </div>
-            <button type="button" onClick={addProject} className="mt-3 bg-green-600 text-white px-4 py-2 rounded-xl font-bold">Add Project</button>
-            <div className="space-y-2 mt-3">
-              {(profile.projects || []).length ? (profile.projects || []).map((project) => (
-                <div key={project.id} className={isDark ? "bg-white/5 border border-white/10 rounded-xl p-3 flex items-start justify-between gap-3" : "bg-white border border-gray-200 rounded-xl p-3 flex items-start justify-between gap-3"}>
-                  <div>
-                    <p className="font-bold">{project.name}</p>
-                    {project.description && <p className="text-xs text-gray-500 mt-1">{project.description}</p>}
-                    {project.link && <a href={safeExternalUrl(project.link)} target="_blank" rel="noreferrer" className="text-xs text-blue-500 font-bold mt-1 inline-block">Open project</a>}
-                  </div>
-                  <button type="button" onClick={() => removeProject(project.id)} className="text-red-500 font-bold text-sm">Delete</button>
-                </div>
-              )) : <p className="text-sm text-gray-500">No projects added yet.</p>}
-            </div>
-          </div>
-
           <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
             <input type="checkbox" checked={Boolean(profile.showEmail)} onChange={(e) => updateProfile("showEmail", e.target.checked)} />
             Show my email to accepted connections
-          </label>
-          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
-            <input type="checkbox" checked={profile.publicProfile !== false} onChange={(e) => updateProfile("publicProfile", e.target.checked)} />
-            Make my portfolio public inside Student OS
-          </label>
-          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
-            <input type="checkbox" checked={profile.showRank !== false} onChange={(e) => updateProfile("showRank", e.target.checked)} />
-            Show rank and XP on portfolio
-          </label>
-          <label className={isDark ? "bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm flex items-center gap-3" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm flex items-center gap-3"}>
-            <input type="checkbox" checked={profile.showCollege !== false} onChange={(e) => updateProfile("showCollege", e.target.checked)} />
-            Show college on portfolio
           </label>
         </div>
       </motion.div>
@@ -4615,10 +4775,6 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
   const unlocked = allAchievements.filter((item) => achievements.includes(item.id)).slice(0, 8);
   const nextEvents = [...calendarEvents].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 3);
   const pendingReminders = reminders.filter((item) => !item.completed).slice(0, 3);
-  const skills = Array.isArray(profile?.skills) ? profile.skills : [];
-  const projects = Array.isArray(profile?.projects) ? profile.projects : [];
-  const showCollege = profile?.showCollege !== false;
-  const showRank = profile?.showRank !== false;
 
   const copyPortfolio = async () => {
     try {
@@ -4643,13 +4799,12 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
             <div>
               <p className="text-sm text-gray-500">Student OS Portfolio</p>
               <h2 className="text-3xl md:text-5xl font-black leading-tight">{profile?.name || user?.displayName || "Student"}</h2>
-              <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.department || profile?.degree || "Student"} {profile?.year ? `· Year ${profile.year}` : ""} {showCollege && profile?.college ? `· ${profile.college}` : ""} {profile?.country ? `· ${profile.country}` : ""}</p>
+              <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.degree || "Student"} {profile?.college ? `· ${profile.college}` : ""}</p>
               <p className="text-sm text-gray-500 mt-1">{profile?.showEmail ? user?.email : "Email hidden from public profile"}</p>
               <div className="flex flex-wrap gap-2 mt-3 text-xs font-bold">
                 {profile?.github && <a href={safeExternalUrl(profile.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white px-3 py-2 rounded-xl">GitHub</a>}
                 {profile?.linkedin && <a href={safeExternalUrl(profile.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-3 py-2 rounded-xl">LinkedIn</a>}
                 {profile?.portfolioWebsite && <a href={safeExternalUrl(profile.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white px-3 py-2 rounded-xl">Website</a>}
-                {profile?.resumeLink && <a href={safeExternalUrl(profile.resumeLink)} target="_blank" rel="noreferrer" className="bg-green-600 text-white px-3 py-2 rounded-xl">Resume</a>}
               </div>
             </div>
           </div>
@@ -4699,34 +4854,6 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
               <p className="text-xs text-gray-500">Study Kingdom</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="grid xl:grid-cols-2 gap-5">
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-bold flex items-center gap-2"><Sparkles size={20} /> Skills</h3>
-          {skills.length ? (
-            <div className="flex flex-wrap gap-2 mt-4">
-              {skills.map((skill) => (
-                <span key={skill} className="px-3 py-2 rounded-full bg-blue-600/15 text-blue-600 text-sm font-bold">{skill}</span>
-              ))}
-            </div>
-          ) : <EmptyState emoji="🧠" title="No skills added" message="Add skills from Settings to make your portfolio stronger." />}
-        </div>
-
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={20} /> Projects</h3>
-          {projects.length ? (
-            <div className="space-y-3 mt-4">
-              {projects.map((project) => (
-                <div key={project.id} className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4" : "bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
-                  <p className="font-bold">{project.name}</p>
-                  {project.description && <p className="text-sm text-gray-500 mt-1">{project.description}</p>}
-                  {project.link && <a href={safeExternalUrl(project.link)} target="_blank" rel="noreferrer" className="text-sm text-blue-500 font-bold mt-2 inline-block">Open Project →</a>}
-                </div>
-              ))}
-            </div>
-          ) : <EmptyState emoji="💻" title="No projects added" message="Add Student OS, ToolNest, Kove, or your coding projects from Settings." />}
         </div>
       </div>
 
