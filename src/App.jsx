@@ -169,6 +169,7 @@ function StudentOSApp({ user }) {
   const [noteDescription, setNoteDescription] = useState("");
   const [selectedNoteFile, setSelectedNoteFile] = useState(null);
   const [noteUploading, setNoteUploading] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
 
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
@@ -271,6 +272,7 @@ function StudentOSApp({ user }) {
     setNoteDescription("");
     setSelectedNoteFile(null);
     setNoteUploading(false);
+    setEditingNote(null);
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -1661,6 +1663,64 @@ function StudentOSApp({ user }) {
     }
   };
 
+  const updateNote = async () => {
+    if (!editingNote?.id) return;
+
+    if (!String(editingNote.title || "").trim() || !String(editingNote.subject || "").trim()) {
+      return showToast("Missing Details", "Title and subject are required.", "⚠️");
+    }
+
+    if (editingNote.userId !== user.uid) {
+      return showToast("Not Allowed", "You can edit only your own uploaded notes.", "🔒");
+    }
+
+    try {
+      await setDoc(
+        doc(db, "notes", editingNote.id),
+        {
+          title: String(editingNote.title || "").trim(),
+          subject: String(editingNote.subject || "").trim(),
+          unit: String(editingNote.unit || "").trim(),
+          description: String(editingNote.description || "").trim(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setEditingNote(null);
+      showToast("Note Updated", "Your uploaded note details were updated.", "✅");
+    } catch (error) {
+      console.error("Update note error:", error);
+      showToast("Update Failed", "Could not update this note. Try again.", "⚠️");
+    }
+  };
+
+  const deleteNote = async (note) => {
+    if (!note?.id) return;
+
+    if (note.userId !== user.uid) {
+      return showToast("Not Allowed", "You can delete only your own uploaded notes.", "🔒");
+    }
+
+    const confirmed = window.confirm("Delete this uploaded note permanently?");
+    if (!confirmed) return;
+
+    try {
+      if (note.filePath) {
+        const { error } = await supabase.storage.from("notes1").remove([note.filePath]);
+        if (error) console.warn("Supabase file delete warning:", error);
+      }
+
+      await deleteDoc(doc(db, "notes", note.id));
+
+      if (editingNote?.id === note.id) setEditingNote(null);
+      showToast("Note Deleted", "Your uploaded note was removed.", "🗑️");
+    } catch (error) {
+      console.error("Delete note error:", error);
+      showToast("Delete Failed", "Could not delete this note. Check Supabase DELETE policy.", "⚠️");
+    }
+  };
+
   const fulfillNoteRequest = async (request, file) => {
     if (!file) {
       return showToast("Choose PDF", "Select a PDF file to fulfill this request.", "⚠️");
@@ -2072,6 +2132,11 @@ function StudentOSApp({ user }) {
                 selectedNoteFile={selectedNoteFile}
                 setSelectedNoteFile={setSelectedNoteFile}
                 noteUploading={noteUploading}
+                editingNote={editingNote}
+                setEditingNote={setEditingNote}
+                updateNote={updateNote}
+                deleteNote={deleteNote}
+                user={user}
                 uploadNote={uploadNote}
                 downloadNote={downloadNote}
                 fulfillNoteRequest={fulfillNoteRequest}
@@ -3293,6 +3358,11 @@ function NotesHubPage({
   selectedNoteFile,
   setSelectedNoteFile,
   noteUploading,
+  editingNote,
+  setEditingNote,
+  updateNote,
+  deleteNote,
+  user,
   uploadNote,
   downloadNote,
   fulfillNoteRequest,
@@ -3300,6 +3370,7 @@ function NotesHubPage({
   const search = noteSearch.trim().toLowerCase();
   const openRequests = noteRequests.filter((item) => item.status !== "fulfilled");
   const fulfilledRequests = noteRequests.filter((item) => item.status === "fulfilled");
+  const myNotes = notes.filter((note) => note.userId === user?.uid);
 
   const filteredNotes = notes.filter((note) => {
     if (!search) return true;
@@ -3381,21 +3452,67 @@ function NotesHubPage({
       )}
 
       {notesTab === "upload" && (
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Upload Notes PDF</h3>
-          <p className="text-sm text-gray-500 mt-1">Choose a PDF from your file manager. Student OS uploads it safely and creates a download link for other students.</p>
-          <div className="grid md:grid-cols-2 gap-3 mt-4">
-            <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Title, e.g. DSP Unit 3 Notes" className={inputClass} />
-            <input value={noteSubject} onChange={(e) => setNoteSubject(e.target.value)} placeholder="Subject" className={inputClass} />
-            <input value={noteUnit} onChange={(e) => setNoteUnit(e.target.value)} placeholder="Unit / Topic" className={inputClass} />
-            <label className={`${inputClass} cursor-pointer flex items-center justify-between gap-3`}>
-              <span className="truncate">{selectedNoteFile ? selectedNoteFile.name : "Choose PDF file"}</span>
-              <span className="font-bold text-blue-500">Browse</span>
-              <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => setSelectedNoteFile(e.target.files?.[0] || null)} />
-            </label>
+        <div className="space-y-5">
+          <div className={`${cardClass} p-5 rounded-2xl`}>
+            <h3 className="text-xl font-black">Upload Notes PDF</h3>
+            <p className="text-sm text-gray-500 mt-1">Choose a PDF from your file manager. Student OS uploads it safely and creates a download link for other students.</p>
+            <div className="grid md:grid-cols-2 gap-3 mt-4">
+              <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Title, e.g. DSP Unit 3 Notes" className={inputClass} />
+              <input value={noteSubject} onChange={(e) => setNoteSubject(e.target.value)} placeholder="Subject" className={inputClass} />
+              <input value={noteUnit} onChange={(e) => setNoteUnit(e.target.value)} placeholder="Unit / Topic" className={inputClass} />
+              <label className={`${inputClass} cursor-pointer flex items-center justify-between gap-3`}>
+                <span className="truncate">{selectedNoteFile ? selectedNoteFile.name : "Choose PDF file"}</span>
+                <span className="font-bold text-blue-500">Browse</span>
+                <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => setSelectedNoteFile(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+            <textarea value={noteDescription} onChange={(e) => setNoteDescription(e.target.value)} placeholder="Short description" className={`${inputClass} w-full mt-3 min-h-24`} />
+            <button onClick={uploadNote} disabled={noteUploading} className="mt-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-5 py-3 rounded-xl font-bold">{noteUploading ? "Uploading PDF..." : "Upload PDF Notes"}</button>
           </div>
-          <textarea value={noteDescription} onChange={(e) => setNoteDescription(e.target.value)} placeholder="Short description" className={`${inputClass} w-full mt-3 min-h-24`} />
-          <button onClick={uploadNote} disabled={noteUploading} className="mt-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-5 py-3 rounded-xl font-bold">{noteUploading ? "Uploading PDF..." : "Upload PDF Notes"}</button>
+
+          <div className={`${cardClass} p-5 rounded-2xl`}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-xl font-black">My Uploaded Notes</h3>
+                <p className="text-sm text-gray-500 mt-1">Manage notes you uploaded. Edit details, open PDF, or delete your own file.</p>
+              </div>
+              <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold">{myNotes.length} uploaded</span>
+            </div>
+
+            {editingNote && (
+              <div className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4 mb-5" : "bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-5"}>
+                <h4 className="font-black mb-3">Edit Note Details</h4>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <input value={editingNote.title || ""} onChange={(e) => setEditingNote({ ...editingNote, title: e.target.value })} placeholder="Title" className={inputClass} />
+                  <input value={editingNote.subject || ""} onChange={(e) => setEditingNote({ ...editingNote, subject: e.target.value })} placeholder="Subject" className={inputClass} />
+                  <input value={editingNote.unit || ""} onChange={(e) => setEditingNote({ ...editingNote, unit: e.target.value })} placeholder="Unit / Topic" className={inputClass} />
+                  <input value={editingNote.fileName || "PDF file"} disabled className={`${inputClass} opacity-70 cursor-not-allowed`} />
+                </div>
+                <textarea value={editingNote.description || ""} onChange={(e) => setEditingNote({ ...editingNote, description: e.target.value })} placeholder="Short description" className={`${inputClass} w-full mt-3 min-h-24`} />
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button onClick={updateNote} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold">Save Changes</button>
+                  <button onClick={() => setEditingNote(null)} className={isDark ? "bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl font-bold" : "bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-xl font-bold"}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {myNotes.length === 0 ? (
+              <EmptyNotes cardClass={cardClass} emoji="📄" title="No uploads yet" message="Upload your first PDF notes and they will appear here for editing or deletion." />
+            ) : (
+              <div className="grid lg:grid-cols-2 gap-4">
+                {myNotes.map((note) => (
+                  <MyUploadedNoteCard
+                    key={note.id}
+                    note={note}
+                    isDark={isDark}
+                    onEdit={() => setEditingNote(note)}
+                    onDelete={() => deleteNote(note)}
+                    onOpen={() => downloadNote(note)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -3445,6 +3562,36 @@ function EmptyNotes({ cardClass, emoji, title, message }) {
       <h3 className="text-xl font-bold mt-3">{title}</h3>
       <p className="text-sm text-gray-500 mt-2">{message}</p>
     </div>
+  );
+}
+
+function MyUploadedNoteCard({ note, isDark, onEdit, onDelete, onOpen }) {
+  const created = note.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : "Recently";
+  const sizeMb = note.fileSize ? `${(Number(note.fileSize) / (1024 * 1024)).toFixed(2)} MB` : "PDF";
+
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-3xl">📄</p>
+          <h3 className="text-lg font-black mt-2 truncate">{note.title || "Untitled Notes"}</h3>
+          <p className="text-sm text-gray-500 mt-1">{note.subject || "Subject"} {note.unit ? `· ${note.unit}` : ""}</p>
+        </div>
+        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Mine</span>
+      </div>
+      {note.description && <p className="text-sm text-gray-500 mt-3 leading-relaxed line-clamp-2">{note.description}</p>}
+      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>📁 {note.fileName || "PDF file"}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>📦 {sizeMb}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>📅 {created}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>⬇️ {note.downloads || 0} downloads</div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-4 text-sm font-bold">
+        <button onClick={onEdit} className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl">Edit</button>
+        <button onClick={onDelete} className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl">Delete</button>
+        <button onClick={onOpen} className="bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl">Open</button>
+      </div>
+    </motion.div>
   );
 }
 
