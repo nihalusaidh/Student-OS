@@ -154,6 +154,20 @@ function StudentOSApp({ user }) {
   const [feedStatus, setFeedStatus] = useState("loading");
   const [feedFilter, setFeedFilter] = useState("global");
 
+  const [notes, setNotes] = useState([]);
+  const [noteRequests, setNoteRequests] = useState([]);
+  const [notesStatus, setNotesStatus] = useState("loading");
+  const [notesTab, setNotesTab] = useState("browse");
+  const [noteSearch, setNoteSearch] = useState("");
+  const [requestSubject, setRequestSubject] = useState("");
+  const [requestUnit, setRequestUnit] = useState("");
+  const [requestMessage, setRequestMessage] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteSubject, setNoteSubject] = useState("");
+  const [noteUnit, setNoteUnit] = useState("");
+  const [noteDescription, setNoteDescription] = useState("");
+  const [noteUrl, setNoteUrl] = useState("");
+
   const getDateOnly = (dateValue) => {
     const date = new Date(dateValue);
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -241,6 +255,19 @@ function StudentOSApp({ user }) {
     setConnectionRequests([]);
     setFeedPosts([]);
     setFeedStatus("loading");
+    setNotes([]);
+    setNoteRequests([]);
+    setNotesStatus("loading");
+    setNotesTab("browse");
+    setNoteSearch("");
+    setRequestSubject("");
+    setRequestUnit("");
+    setRequestMessage("");
+    setNoteTitle("");
+    setNoteSubject("");
+    setNoteUnit("");
+    setNoteDescription("");
+    setNoteUrl("");
     setLeaderboardStatus("loading");
   }, [user?.uid]);
 
@@ -427,6 +454,41 @@ function StudentOSApp({ user }) {
     );
 
     return unsubscribe;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    setNotesStatus("loading");
+
+    const notesQuery = query(collection(db, "notes"), orderBy("createdAt", "desc"), firestoreLimit(200));
+    const unsubscribeNotes = onSnapshot(
+      notesQuery,
+      (snapshot) => {
+        setNotes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setNotesStatus("synced");
+      },
+      (error) => {
+        console.error("Notes sync error:", error);
+        setNotesStatus("error");
+      }
+    );
+
+    const requestsQuery = query(collection(db, "noteRequests"), orderBy("createdAt", "desc"), firestoreLimit(200));
+    const unsubscribeRequests = onSnapshot(
+      requestsQuery,
+      (snapshot) => {
+        setNoteRequests(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+      },
+      (error) => {
+        console.error("Note requests sync error:", error);
+      }
+    );
+
+    return () => {
+      unsubscribeNotes();
+      unsubscribeRequests();
+    };
   }, [user?.uid]);
 
   useEffect(() => {
@@ -1449,6 +1511,144 @@ function StudentOSApp({ user }) {
     reader.readAsText(file);
   };
 
+  const addNoteRequest = async () => {
+    if (!requestSubject.trim() || !requestMessage.trim()) {
+      return showToast("Missing Details", "Enter subject and what notes you need.", "⚠️");
+    }
+
+    const requestId = `${user.uid}_${Date.now()}`;
+    const payload = {
+      userId: user.uid,
+      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+      college: profile?.college || "",
+      country: profile?.country || "",
+      degree: profile?.degree || "",
+      department: profile?.department || profile?.degree || "",
+      year: profile?.year || "",
+      subject: requestSubject.trim(),
+      unit: requestUnit.trim(),
+      message: requestMessage.trim(),
+      status: "open",
+      fulfilledBy: "",
+      fulfilledNoteId: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "noteRequests", requestId), payload);
+      setRequestSubject("");
+      setRequestUnit("");
+      setRequestMessage("");
+      addXp(10);
+      showToast("Notes Requested", "+10 XP. Your request is visible in Notes Hub.", "📢");
+    } catch (error) {
+      console.error("Add note request error:", error);
+      showToast("Request Failed", "Could not post notes request. Try again.", "⚠️");
+    }
+  };
+
+  const uploadNote = async () => {
+    if (!noteTitle.trim() || !noteSubject.trim() || !noteUrl.trim()) {
+      return showToast("Missing Details", "Enter title, subject, and PDF/Drive link.", "⚠️");
+    }
+
+    const noteId = `${user.uid}_${Date.now()}`;
+    const payload = {
+      userId: user.uid,
+      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+      college: profile?.college || "",
+      country: profile?.country || "",
+      degree: profile?.degree || "",
+      department: profile?.department || profile?.degree || "",
+      year: profile?.year || "",
+      title: noteTitle.trim(),
+      subject: noteSubject.trim(),
+      unit: noteUnit.trim(),
+      description: noteDescription.trim(),
+      url: safeExternalUrl(noteUrl),
+      downloads: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "notes", noteId), payload);
+      setNoteTitle("");
+      setNoteSubject("");
+      setNoteUnit("");
+      setNoteDescription("");
+      setNoteUrl("");
+      addXp(25);
+      showToast("Notes Uploaded", "+25 XP. You helped the student community.", "📄");
+    } catch (error) {
+      console.error("Upload note error:", error);
+      showToast("Upload Failed", "Could not add notes link. Try again.", "⚠️");
+    }
+  };
+
+  const downloadNote = async (note) => {
+    if (!note?.url) return;
+    window.open(safeExternalUrl(note.url), "_blank", "noopener,noreferrer");
+
+    try {
+      await setDoc(
+        doc(db, "notes", note.id),
+        {
+          downloads: Number(note.downloads || 0) + 1,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Download count error:", error);
+    }
+  };
+
+  const fulfillNoteRequest = async (request) => {
+    const link = window.prompt("Paste the notes PDF / Google Drive link to fulfill this request:");
+    if (!link) return;
+
+    const noteId = `${user.uid}_${Date.now()}`;
+    const payload = {
+      userId: user.uid,
+      displayName: profile?.name || user?.displayName || user?.email?.split("@")[0] || "Student",
+      college: profile?.college || "",
+      country: profile?.country || "",
+      degree: profile?.degree || "",
+      department: profile?.department || profile?.degree || "",
+      year: profile?.year || "",
+      title: `${request.subject || "Notes"} ${request.unit ? `- ${request.unit}` : ""}`.trim(),
+      subject: request.subject || "",
+      unit: request.unit || "",
+      description: `Uploaded to fulfill request from ${request.displayName || "student"}.`,
+      url: safeExternalUrl(link),
+      downloads: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "notes", noteId), payload);
+      await setDoc(
+        doc(db, "noteRequests", request.id),
+        {
+          status: "fulfilled",
+          fulfilledBy: user.uid,
+          fulfilledByName: payload.displayName,
+          fulfilledNoteId: noteId,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      addXp(40);
+      showToast("Request Fulfilled", "+40 XP. Your notes helped another student.", "✅");
+    } catch (error) {
+      console.error("Fulfill request error:", error);
+      showToast("Fulfill Failed", "Could not fulfill this request. Try again.", "⚠️");
+    }
+  };
+
   return (
     <div className={`student-os-root min-h-screen flex transition-colors duration-500 overflow-x-hidden ${appBg}`}>
       <Overlays
@@ -1476,7 +1676,7 @@ function StudentOSApp({ user }) {
           <NavItem active={activePage === "ai"} onClick={() => setActivePage("ai")} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
-          <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Feed" navHover={navHover} />
+          <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
           <NavItem active={activePage === "social"} onClick={() => setActivePage("social")} icon={<Users size={20} />} label="Students" navHover={navHover} />
           <NavItem active={activePage === "portfolio"} onClick={() => setActivePage("portfolio")} icon={<GraduationCap size={20} />} label="Portfolio" navHover={navHover} />
           <NavItem active={activePage === "leaderboard"} onClick={() => setActivePage("leaderboard")} icon={<Trophy size={20} />} label="Leaderboard" navHover={navHover} />
@@ -1773,18 +1973,38 @@ function StudentOSApp({ user }) {
           )}
 
           {activePage === "feed" && (
-            <PageMotion key="feed">
-              <FeedPage
+            <PageMotion key="notes-hub">
+              <NotesHubPage
                 isDark={isDark}
                 cardClass={cardClass}
-                user={user}
-                feedPosts={feedPosts}
-                feedStatus={feedStatus}
-                feedFilter={feedFilter}
-                setFeedFilter={setFeedFilter}
-                followingIds={followingIds}
-                connectedStudents={connectedStudents}
-                reactToFeedPost={reactToFeedPost}
+                inputClass={inputClass}
+                notes={notes}
+                noteRequests={noteRequests}
+                notesStatus={notesStatus}
+                notesTab={notesTab}
+                setNotesTab={setNotesTab}
+                noteSearch={noteSearch}
+                setNoteSearch={setNoteSearch}
+                requestSubject={requestSubject}
+                setRequestSubject={setRequestSubject}
+                requestUnit={requestUnit}
+                setRequestUnit={setRequestUnit}
+                requestMessage={requestMessage}
+                setRequestMessage={setRequestMessage}
+                addNoteRequest={addNoteRequest}
+                noteTitle={noteTitle}
+                setNoteTitle={setNoteTitle}
+                noteSubject={noteSubject}
+                setNoteSubject={setNoteSubject}
+                noteUnit={noteUnit}
+                setNoteUnit={setNoteUnit}
+                noteDescription={noteDescription}
+                setNoteDescription={setNoteDescription}
+                noteUrl={noteUrl}
+                setNoteUrl={setNoteUrl}
+                uploadNote={uploadNote}
+                downloadNote={downloadNote}
+                fulfillNoteRequest={fulfillNoteRequest}
               />
             </PageMotion>
           )}
@@ -2236,7 +2456,7 @@ function InternalsPage(props) {
         </div>
 
         <div className="border-t border-white/10 mt-5 pt-5 grid gap-3">
-          <select value={selectedInternalSubject} onChange={(event) => setSelectedInternalSubject(event.target.value)} className={inputClass}>
+          <select value={selectedInternalSubject} onChange={(event) => setSelectedInternalSubject(event.target.value)} className={`${inputClass} ${isDark ? "bg-slate-900 text-white" : "bg-white text-slate-900"}`}>
             <option value="">Select subject</option>
             {internalSubjects.map((subject) => (
               <option key={subject.id} value={subject.id}>{subject.name}</option>
@@ -2974,143 +3194,227 @@ function AnalyticsPage({ isDark, cardClass, xp, streak, forest, completed, remin
 
 
 
-function FeedPage({ isDark, cardClass, user, feedPosts, feedStatus, feedFilter, setFeedFilter, followingIds, connectedStudents, reactToFeedPost }) {
-  const connectedIds = connectedStudents.map((item) => item.id);
+function NotesHubPage({
+  isDark,
+  cardClass,
+  inputClass,
+  notes,
+  noteRequests,
+  notesStatus,
+  notesTab,
+  setNotesTab,
+  noteSearch,
+  setNoteSearch,
+  requestSubject,
+  setRequestSubject,
+  requestUnit,
+  setRequestUnit,
+  requestMessage,
+  setRequestMessage,
+  addNoteRequest,
+  noteTitle,
+  setNoteTitle,
+  noteSubject,
+  setNoteSubject,
+  noteUnit,
+  setNoteUnit,
+  noteDescription,
+  setNoteDescription,
+  noteUrl,
+  setNoteUrl,
+  uploadNote,
+  downloadNote,
+  fulfillNoteRequest,
+}) {
+  const search = noteSearch.trim().toLowerCase();
+  const openRequests = noteRequests.filter((item) => item.status !== "fulfilled");
+  const fulfilledRequests = noteRequests.filter((item) => item.status === "fulfilled");
 
-  const visiblePosts = feedPosts.filter((post) => {
-    if (feedFilter === "following") return followingIds.includes(post.userId) || post.userId === user?.uid;
-    if (feedFilter === "connected") return connectedIds.includes(post.userId) || post.userId === user?.uid;
-    return true;
+  const filteredNotes = notes.filter((note) => {
+    if (!search) return true;
+    return [note.title, note.subject, note.unit, note.description, note.displayName, note.college]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(search);
   });
 
-  const feedStats = {
-    global: feedPosts.length,
-    following: feedPosts.filter((post) => followingIds.includes(post.userId) || post.userId === user?.uid).length,
-    connected: feedPosts.filter((post) => connectedIds.includes(post.userId) || post.userId === user?.uid).length,
-  };
+  const filteredRequests = openRequests.filter((request) => {
+    if (!search) return true;
+    return [request.subject, request.unit, request.message, request.displayName, request.college]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(search);
+  });
+
+  const tabButton = (id, label) => (
+    <button
+      onClick={() => setNotesTab(id)}
+      className={`px-4 py-2 rounded-xl font-bold text-sm transition ${
+        notesTab === id
+          ? "bg-blue-600 text-white shadow-lg"
+          : isDark
+          ? "bg-white/10 text-slate-200 hover:bg-white/20"
+          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <section className="mt-5 space-y-5">
-      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white p-5 rounded-3xl shadow-2xl border border-white/10 overflow-hidden relative">
-        <motion.div animate={{ y: [0, -18, 0], rotate: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 5 }} className="absolute right-8 top-8 text-5xl opacity-20">🔥</motion.div>
-        <motion.div animate={{ y: [0, 14, 0] }} transition={{ repeat: Infinity, duration: 4 }} className="absolute right-28 bottom-5 text-4xl opacity-20">✨</motion.div>
+      <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 rounded-3xl shadow-2xl border border-white/10 overflow-hidden relative">
+        <motion.div animate={{ y: [0, -18, 0], rotate: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 5 }} className="absolute right-8 top-8 text-5xl opacity-20">📄</motion.div>
+        <motion.div animate={{ y: [0, 14, 0] }} transition={{ repeat: Infinity, duration: 4 }} className="absolute right-28 bottom-5 text-4xl opacity-20">📚</motion.div>
         <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-black flex items-center gap-3"><Rss /> Student Feed</h2>
-            <p className="text-indigo-200 mt-2 text-sm">See focus sessions, streaks, achievements, calendar wins, and progress from students.</p>
+            <h2 className="text-3xl font-black flex items-center gap-3"><Rss /> Notes Hub</h2>
+            <p className="text-blue-100 mt-2 text-sm">Request notes, upload useful PDFs or Drive links, search study material, and help other students.</p>
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
-            <FeedStat label="Global" value={feedStats.global} />
-            <FeedStat label="Following" value={feedStats.following} />
-            <FeedStat label="Connected" value={feedStats.connected} />
+            <NoteStat label="Notes" value={notes.length} />
+            <NoteStat label="Requests" value={openRequests.length} />
+            <NoteStat label="Fulfilled" value={fulfilledRequests.length} />
           </div>
         </div>
       </div>
 
-      <div className={`${cardClass} p-4 rounded-2xl`}>
+      <div className={`${cardClass} p-4 rounded-2xl space-y-4`}>
         <div className="flex flex-wrap gap-2">
-          {[{ id: "global", label: "🌍 Global" }, { id: "following", label: "🤝 Following" }, { id: "connected", label: "🔗 Connected" }].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setFeedFilter(item.id)}
-              className={`px-4 py-2 rounded-xl font-bold text-sm transition ${feedFilter === item.id ? "bg-blue-600 text-white shadow-lg" : isDark ? "bg-white/10 text-slate-200 hover:bg-white/20" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-            >
-              {item.label}
-            </button>
-          ))}
+          {tabButton("browse", "🔍 Browse Notes")}
+          {tabButton("request", "📢 Request Notes")}
+          {tabButton("upload", "📄 Upload Notes")}
+          {tabButton("requests", "✅ Help Requests")}
         </div>
+        <input
+          value={noteSearch}
+          onChange={(event) => setNoteSearch(event.target.value)}
+          placeholder="Search by subject, unit, college, uploader..."
+          className={`${inputClass} w-full`}
+        />
       </div>
 
-      {feedStatus === "loading" ? (
-        <div className={`${cardClass} p-8 rounded-2xl text-center`}>
-          <p className="text-4xl">⏳</p>
-          <p className="font-bold mt-3">Loading student activity...</p>
-        </div>
-      ) : visiblePosts.length === 0 ? (
-        <div className={`${cardClass} p-8 rounded-2xl text-center`}>
-          <p className="text-5xl">🔥</p>
-          <h3 className="text-xl font-bold mt-3">No feed posts yet</h3>
-          <p className="text-sm text-gray-500 mt-2">Complete a focus session, add a calendar event, or follow students to make this feed alive.</p>
-        </div>
-      ) : (
-        <div className="grid xl:grid-cols-[1fr_0.9fr] gap-5">
-          <div className="space-y-4">
-            {visiblePosts.map((post) => (
-              <FeedPostCard key={post.id} post={post} user={user} isDark={isDark} reactToFeedPost={reactToFeedPost} />
-            ))}
+      {notesTab === "request" && (
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <h3 className="text-xl font-black">Request Notes</h3>
+          <p className="text-sm text-gray-500 mt-1">Ask the community for notes, PDFs, previous questions, lab records, or unit-wise short notes.</p>
+          <div className="grid md:grid-cols-2 gap-3 mt-4">
+            <input value={requestSubject} onChange={(e) => setRequestSubject(e.target.value)} placeholder="Subject, e.g. DSP" className={inputClass} />
+            <input value={requestUnit} onChange={(e) => setRequestUnit(e.target.value)} placeholder="Unit / Topic, e.g. Unit 4" className={inputClass} />
           </div>
-          <div className="space-y-4">
-            <div className={`${cardClass} p-5 rounded-2xl sticky top-5`}>
-              <h3 className="font-bold flex items-center gap-2"><Sparkles size={20} /> Why the feed matters</h3>
-              <p className="text-sm text-gray-500 mt-3 leading-relaxed">The feed makes Student OS feel alive. Students can cheer, like, and motivate progress without adding private messaging or spam.</p>
-              <div className="grid gap-3 mt-4 text-sm">
-                <div className={isDark ? "bg-white/5 border border-white/10 rounded-xl p-3" : "bg-blue-50 border border-blue-100 rounded-xl p-3"}>🏆 Celebrate achievements</div>
-                <div className={isDark ? "bg-white/5 border border-white/10 rounded-xl p-3" : "bg-green-50 border border-green-100 rounded-xl p-3"}>🌱 Encourage focus sessions</div>
-                <div className={isDark ? "bg-white/5 border border-white/10 rounded-xl p-3" : "bg-orange-50 border border-orange-100 rounded-xl p-3"}>🔥 Keep streaks alive</div>
-              </div>
-            </div>
-          </div>
+          <textarea value={requestMessage} onChange={(e) => setRequestMessage(e.target.value)} placeholder="What exactly do you need?" className={`${inputClass} w-full mt-3 min-h-28`} />
+          <button onClick={addNoteRequest} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold">Post Request</button>
         </div>
       )}
+
+      {notesTab === "upload" && (
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <h3 className="text-xl font-black">Upload Notes Link</h3>
+          <p className="text-sm text-gray-500 mt-1">For V1, paste a Google Drive / PDF link. Later we can add direct PDF upload + AI notes.</p>
+          <div className="grid md:grid-cols-2 gap-3 mt-4">
+            <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Title, e.g. DSP Unit 3 Notes" className={inputClass} />
+            <input value={noteSubject} onChange={(e) => setNoteSubject(e.target.value)} placeholder="Subject" className={inputClass} />
+            <input value={noteUnit} onChange={(e) => setNoteUnit(e.target.value)} placeholder="Unit / Topic" className={inputClass} />
+            <input value={noteUrl} onChange={(e) => setNoteUrl(e.target.value)} placeholder="PDF / Google Drive link" className={inputClass} />
+          </div>
+          <textarea value={noteDescription} onChange={(e) => setNoteDescription(e.target.value)} placeholder="Short description" className={`${inputClass} w-full mt-3 min-h-24`} />
+          <button onClick={uploadNote} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-bold">Upload Notes</button>
+        </div>
+      )}
+
+      {notesStatus === "loading" ? (
+        <div className={`${cardClass} p-8 rounded-2xl text-center`}>
+          <p className="text-4xl">⏳</p>
+          <p className="font-bold mt-3">Loading Notes Hub...</p>
+        </div>
+      ) : notesTab === "requests" ? (
+        filteredRequests.length === 0 ? (
+          <EmptyNotes cardClass={cardClass} emoji="✅" title="No open requests" message="When students ask for notes, their requests will appear here." />
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-4">
+            {filteredRequests.map((request) => (
+              <NoteRequestCard key={request.id} request={request} isDark={isDark} fulfillNoteRequest={fulfillNoteRequest} />
+            ))}
+          </div>
+        )
+      ) : notesTab === "browse" ? (
+        filteredNotes.length === 0 ? (
+          <EmptyNotes cardClass={cardClass} emoji="📚" title="No notes found" message="Upload notes or search another subject." />
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-4">
+            {filteredNotes.map((note) => (
+              <NoteCard key={note.id} note={note} isDark={isDark} downloadNote={downloadNote} />
+            ))}
+          </div>
+        )
+      ) : null}
     </section>
   );
 }
 
-function FeedStat({ label, value }) {
+function NoteStat({ label, value }) {
   return (
     <div className="bg-white/10 border border-white/10 px-4 py-3 rounded-2xl min-w-24">
-      <p className="text-xs text-indigo-200">{label}</p>
+      <p className="text-xs text-blue-100">{label}</p>
       <p className="text-xl font-black">{value}</p>
     </div>
   );
 }
 
-function FeedPostCard({ post, user, isDark, reactToFeedPost }) {
-  const likes = Array.isArray(post.likes) ? post.likes : [];
-  const cheers = Array.isArray(post.cheers) ? post.cheers : [];
-  const motivates = Array.isArray(post.motivates) ? post.motivates : [];
-  const created = post.createdAt?.toDate ? post.createdAt.toDate().toLocaleString() : "Just now";
-
-  const actionClass = (active) =>
-    active
-      ? "bg-blue-600 text-white"
-      : isDark
-      ? "bg-white/10 text-slate-200 hover:bg-white/20"
-      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
-
+function EmptyNotes({ cardClass, emoji, title, message }) {
   return (
-    <motion.div layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
-      <div className="flex items-start gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white flex items-center justify-center font-black text-xl overflow-hidden shrink-0">
-          {post.photoURL ? <img src={post.photoURL} alt="profile" className="w-full h-full object-cover" /> : (post.displayName || "S").charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-            <div>
-              <p className="font-black truncate">{post.displayName || "Student"}</p>
-              <p className="text-xs text-gray-500">{post.degree || "Student"} {post.college ? `· ${post.college}` : ""}</p>
-            </div>
-            <span className="text-xs text-gray-500">{created}</span>
-          </div>
+    <div className={`${cardClass} p-8 rounded-2xl text-center`}>
+      <p className="text-5xl">{emoji}</p>
+      <h3 className="text-xl font-bold mt-3">{title}</h3>
+      <p className="text-sm text-gray-500 mt-2">{message}</p>
+    </div>
+  );
+}
 
-          <div className={isDark ? "mt-4 bg-white/5 border border-white/10 rounded-2xl p-4" : "mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
-            <p className="text-3xl">{post.emoji || "✨"}</p>
-            <h3 className="font-black mt-2">{post.title}</h3>
-            <p className="text-sm text-gray-500 mt-1 leading-relaxed">{post.message}</p>
-            <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
-              <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-white rounded-xl p-2"}>⭐ {post.xp || 0} XP</div>
-              <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-white rounded-xl p-2"}>🔥 {post.streak || 0}</div>
-              <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-white rounded-xl p-2"}>🌳 {post.forest || 0}</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            <button onClick={() => reactToFeedPost(post, "like")} className={`rounded-xl py-2 text-sm font-bold transition flex items-center justify-center gap-2 ${actionClass(likes.includes(user?.uid))}`}><Heart size={16} /> {likes.length}</button>
-            <button onClick={() => reactToFeedPost(post, "cheer")} className={`rounded-xl py-2 text-sm font-bold transition flex items-center justify-center gap-2 ${actionClass(cheers.includes(user?.uid))}`}><ThumbsUp size={16} /> {cheers.length}</button>
-            <button onClick={() => reactToFeedPost(post, "motivate")} className={`rounded-xl py-2 text-sm font-bold transition flex items-center justify-center gap-2 ${actionClass(motivates.includes(user?.uid))}`}><Flame size={16} /> {motivates.length}</button>
-          </div>
+function NoteCard({ note, isDark, downloadNote }) {
+  const created = note.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : "Recently";
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-3xl">📄</p>
+          <h3 className="text-lg font-black mt-2">{note.title || "Untitled Notes"}</h3>
+          <p className="text-sm text-gray-500 mt-1">{note.subject || "Subject"} {note.unit ? `· ${note.unit}` : ""}</p>
         </div>
+        <span className={isDark ? "bg-white/10 text-blue-200 px-3 py-1 rounded-full text-xs font-bold" : "bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold"}>{note.downloads || 0} downloads</span>
       </div>
+      {note.description && <p className="text-sm text-gray-500 mt-3 leading-relaxed">{note.description}</p>}
+      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>👤 {note.displayName || "Student"}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🏫 {note.college || "College"}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>📅 {created}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🌍 {note.country || "Global"}</div>
+      </div>
+      <button onClick={() => downloadNote(note)} className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold">Open / Download</button>
+    </motion.div>
+  );
+}
+
+function NoteRequestCard({ request, isDark, fulfillNoteRequest }) {
+  const created = request.createdAt?.toDate ? request.createdAt.toDate().toLocaleDateString() : "Recently";
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }} className={isDark ? "bg-white/10 border border-white/10 rounded-3xl p-5 shadow-2xl" : "bg-white border border-gray-200 rounded-3xl p-5 shadow"}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-3xl">📢</p>
+          <h3 className="text-lg font-black mt-2">{request.subject || "Notes Request"}</h3>
+          <p className="text-sm text-gray-500 mt-1">{request.unit || "Any unit"} · Requested {created}</p>
+        </div>
+        <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">Open</span>
+      </div>
+      <p className="text-sm text-gray-500 mt-3 leading-relaxed">{request.message}</p>
+      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>👤 {request.displayName || "Student"}</div>
+        <div className={isDark ? "bg-white/5 rounded-xl p-2" : "bg-gray-50 rounded-xl p-2"}>🏫 {request.college || "College"}</div>
+      </div>
+      <button onClick={() => fulfillNoteRequest(request)} className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold">Fulfill With Notes Link</button>
     </motion.div>
   );
 }
@@ -3298,19 +3602,19 @@ function SocialPage({ isDark, cardClass, leaderboard, leaderboardStatus, user, f
           />
 
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
-            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} className={isDark ? "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-white text-slate-900 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
               <option value="">All countries</option>
               {countries.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <select value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+            <select value={collegeFilter} onChange={(e) => setCollegeFilter(e.target.value)} className={isDark ? "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-white text-slate-900 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
               <option value="">All colleges</option>
               {colleges.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+            <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className={isDark ? "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-white text-slate-900 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
               <option value="">All departments</option>
               {departments.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className={isDark ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
+            <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className={isDark ? "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm outline-none" : "bg-white text-slate-900 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"}>
               <option value="">All years</option>
               {years.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
