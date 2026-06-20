@@ -20,6 +20,7 @@ import Login from "./pages/Login";
 import Phaser from "phaser";
 import { motion, AnimatePresence } from "framer-motion";
 import ArcheryGame from "./components/games/ArcheryGame";
+import GameRoom from "./pages/GameRoom";
 import {
   Flame,
   Target,

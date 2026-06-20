@@ -2,25 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Pro V1
+ * ArcheryGame Pro Fullscreen
  *
- * Replace:
- *   src/components/games/ArcheryGame.jsx
- *
- * Requires:
- *   npm install phaser
+ * File:
+ * src/components/games/ArcheryGame.jsx
  *
  * Features:
- * - Full-screen style Game Room
+ * - Fullscreen game room
+ * - Professional 2D game layout
+ * - Drag, aim, release mechanic
  * - 3 arrows per question
- * - Arrow reload animation
+ * - Reload animation
  * - Moving targets
  * - Bow rotation
- * - Physics arrow
+ * - Arrow physics
  * - Combo scoring
  * - Perfect shot bonus
- * - Particle effects
- * - XP + coins reward callback
+ * - Particle explosions
+ * - Game complete screen
  */
 
 export default function ArcheryGame({
@@ -31,7 +30,7 @@ export default function ArcheryGame({
 }) {
   const containerRef = useRef(null);
   const gameRef = useRef(null);
-  const rewardedRef = useRef(false);
+  const rewardSentRef = useRef(false);
 
   const [hud, setHud] = useState({
     score: 0,
@@ -39,7 +38,7 @@ export default function ArcheryGame({
     arrows: 3,
     current: 1,
     total: Math.max(questions.length, 1),
-    message: "Enter the arena. You have 3 arrows for each question.",
+    message: "Drag backward, aim, and release.",
   });
 
   useEffect(() => {
@@ -49,31 +48,11 @@ export default function ArcheryGame({
       questions.length > 0
         ? questions
         : [
-            {
-              question: "Both inputs 1 gives output 1?",
-              answer: "AND",
-              options: ["AND", "OR", "XOR", "NOT"],
-            },
-            {
-              question: "Opposite output gate?",
-              answer: "NOT",
-              options: ["NOT", "AND", "OR", "XOR"],
-            },
-            {
-              question: "Universal gate?",
-              answer: "NAND",
-              options: ["NAND", "OR", "XOR", "AND"],
-            },
-            {
-              question: "Either input 1 gives output 1?",
-              answer: "OR",
-              options: ["AND", "OR", "NAND", "NOR"],
-            },
-            {
-              question: "Exclusive OR short form?",
-              answer: "XOR",
-              options: ["XOR", "AND", "OR", "NOT"],
-            },
+            { question: "Both inputs 1 gives output 1?", answer: "AND", options: ["AND", "OR", "XOR", "NOT"] },
+            { question: "Opposite output gate?", answer: "NOT", options: ["NOT", "AND", "OR", "XOR"] },
+            { question: "Universal gate?", answer: "NAND", options: ["NAND", "OR", "XOR", "AND"] },
+            { question: "Either input 1 gives output 1?", answer: "OR", options: ["AND", "OR", "NAND", "NOR"] },
+            { question: "Exclusive OR short form?", answer: "XOR", options: ["XOR", "AND", "OR", "NOT"] },
           ];
 
     let score = 0;
@@ -81,9 +60,10 @@ export default function ArcheryGame({
     let currentIndex = 0;
     let arrowsLeft = 3;
     let canShoot = true;
+    let isDragging = false;
     let ended = false;
 
-    const updateHud = (message = "") => {
+    const syncHud = (message = "") => {
       setHud({
         score,
         combo,
@@ -94,71 +74,82 @@ export default function ArcheryGame({
       });
     };
 
-    class ArcheryScene extends Phaser.Scene {
+    class ProArcheryScene extends Phaser.Scene {
       constructor() {
-        super("ArcheryProScene");
+        super("ProArcheryScene");
         this.targets = [];
         this.labels = [];
         this.aimLine = null;
         this.arrow = null;
         this.bow = null;
+        this.bowString = null;
         this.questionText = null;
         this.scoreText = null;
-        this.arrowText = null;
         this.comboText = null;
-        this.levelText = null;
-        this.reloadText = null;
+        this.arrowText = null;
+        this.powerBar = null;
+        this.powerFill = null;
+        this.dragStart = null;
+        this.power = 0;
       }
 
       create() {
         const width = this.scale.width;
         const height = this.scale.height;
 
-        this.add.rectangle(width / 2, height / 2, width, height, 0x020617);
-
-        this.createBackground(width, height);
-        this.createHud(width, height);
-        this.createBow(width, height);
+        this.createWorld(width, height);
+        this.createTopHud(width);
+        this.createBow(height);
+        this.createPowerBar(height);
 
         this.aimLine = this.add.graphics();
 
         this.questionText = this.add
-          .text(width / 2, 74, "", {
-            fontSize: width < 520 ? "15px" : "21px",
+          .text(width / 2, 86, "", {
+            fontSize: width < 600 ? "17px" : "23px",
             color: "#ffffff",
             fontFamily: "Arial",
             fontStyle: "bold",
             align: "center",
-            wordWrap: { width: width - 90 },
+            wordWrap: { width: width - 100 },
           })
           .setOrigin(0.5, 0);
 
         this.loadQuestion();
 
+        this.input.on("pointerdown", (pointer) => {
+          if (!canShoot || ended) return;
+          isDragging = true;
+          this.dragStart = { x: pointer.x, y: pointer.y };
+          this.rotateBow(pointer.x, pointer.y);
+          this.drawAim(pointer.x, pointer.y);
+        });
+
         this.input.on("pointermove", (pointer) => {
           if (!canShoot || ended) return;
           this.rotateBow(pointer.x, pointer.y);
-          this.drawAimLine(pointer.x, pointer.y);
-        });
-
-        this.input.on("pointerdown", (pointer) => {
-          if (!canShoot || ended) return;
-          this.rotateBow(pointer.x, pointer.y);
-          this.drawAimLine(pointer.x, pointer.y);
+          if (isDragging) this.drawAim(pointer.x, pointer.y);
         });
 
         this.input.on("pointerup", (pointer) => {
-          if (!canShoot || ended) return;
+          if (!canShoot || ended || !isDragging) return;
+          isDragging = false;
           this.rotateBow(pointer.x, pointer.y);
           this.shoot(pointer.x, pointer.y);
         });
       }
 
-      createBackground(width, height) {
-        for (let i = 0; i < 90; i++) {
+      createWorld(width, height) {
+        this.add.rectangle(width / 2, height / 2, width, height, 0x020617);
+
+        const graphics = this.add.graphics();
+        graphics.fillGradientStyle(0x0f172a, 0x0f172a, 0x111827, 0x020617, 1);
+        graphics.fillRect(0, 0, width, height);
+
+        for (let i = 0; i < 110; i++) {
           const star = this.add.circle(
             Phaser.Math.Between(0, width),
-            Phaser.Math.Between(0, height),
+            Phaser.Math.Between(0, height - 80),
             Phaser.Math.Between(1, 2),
             0xffffff,
             Phaser.Math.FloatBetween(0.15, 0.75)
@@ -166,89 +157,124 @@ export default function ArcheryGame({
 
           this.tweens.add({
             targets: star,
-            alpha: Phaser.Math.FloatBetween(0.15, 0.9),
-            duration: Phaser.Math.Between(700, 1900),
+            alpha: Phaser.Math.FloatBetween(0.15, 1),
+            duration: Phaser.Math.Between(700, 1800),
             yoyo: true,
             repeat: -1,
           });
         }
 
-        this.add.rectangle(width / 2, height - 30, width, 60, 0x064e3b);
+        this.add.rectangle(width / 2, height - 38, width, 76, 0x064e3b);
+        this.add.rectangle(width / 2, height - 74, width, 10, 0x22c55e, 0.55);
 
-        for (let i = 0; i < 12; i++) {
-          this.add.text(Phaser.Math.Between(0, width), height - Phaser.Math.Between(34, 80), "🌲", {
-            fontSize: Phaser.Math.Between(20, 34) + "px",
-          });
+        for (let i = 0; i < 16; i++) {
+          this.add.text(
+            Phaser.Math.Between(0, width),
+            height - Phaser.Math.Between(45, 105),
+            "🌲",
+            { fontSize: Phaser.Math.Between(20, 38) + "px" }
+          );
         }
+
+        this.add.text(26, height - 54, "Power: drag backward", {
+          fontSize: "16px",
+          color: "#bbf7d0",
+          fontFamily: "Arial",
+          fontStyle: "bold",
+        });
       }
 
-      createHud(width, height) {
-        this.add.rectangle(width / 2, 26, width, 52, 0x0f172a, 0.92);
+      createTopHud(width) {
+        this.add.rectangle(width / 2, 28, width, 56, 0x0f172a, 0.94);
 
-        this.levelText = this.add.text(20, 14, "🏹 Archery Pro", {
-          fontSize: width < 520 ? "15px" : "18px",
+        this.add.text(22, 13, "🏹 Archery Pro", {
+          fontSize: width < 600 ? "16px" : "20px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
         });
 
-        this.scoreText = this.add.text(width - 220, 14, "Score: 0", {
-          fontSize: width < 520 ? "14px" : "17px",
+        this.scoreText = this.add.text(width - 310, 14, "Score: 0", {
+          fontSize: width < 600 ? "14px" : "18px",
           color: "#facc15",
           fontFamily: "Arial",
           fontStyle: "bold",
         });
 
-        this.comboText = this.add.text(width - 118, 14, "Combo: 0", {
-          fontSize: width < 520 ? "14px" : "17px",
+        this.comboText = this.add.text(width - 190, 14, "Combo: 0", {
+          fontSize: width < 600 ? "14px" : "18px",
           color: "#38bdf8",
           fontFamily: "Arial",
           fontStyle: "bold",
         });
 
-        this.arrowText = this.add.text(20, height - 44, "Arrows: 🏹🏹🏹", {
-          fontSize: "18px",
+        this.arrowText = this.add.text(width - 88, 14, "🏹🏹🏹", {
+          fontSize: width < 600 ? "15px" : "18px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
         });
-
-        this.add.text(width / 2, height - 45, "Aim carefully. First arrow gives maximum points.", {
-          fontSize: width < 520 ? "13px" : "16px",
-          color: "#bbf7d0",
-          fontFamily: "Arial",
-        }).setOrigin(0.5);
       }
 
-      createBow(width, height) {
-        this.add.circle(96, height / 2, 64, 0x1e293b);
-        this.add.circle(96, height / 2, 52, 0x334155);
+      createBow(height) {
+        this.add.circle(118, height / 2, 72, 0x1e293b, 0.95);
+        this.add.circle(118, height / 2, 58, 0x334155, 0.95);
 
         this.bow = this.add
-          .text(96, height / 2, "🏹", { fontSize: "76px" })
-          .setOrigin(0.5);
+          .container(118, height / 2)
+          .setSize(120, 120);
+
+        const bowArc = this.add.graphics();
+        bowArc.lineStyle(10, 0xf59e0b, 1);
+        bowArc.beginPath();
+        bowArc.arc(0, 0, 52, -1.25, 1.25, false);
+        bowArc.strokePath();
+
+        this.bowString = this.add.graphics();
+        this.bowString.lineStyle(3, 0xffffff, 1);
+        this.bowString.beginPath();
+        this.bowString.moveTo(18, -48);
+        this.bowString.lineTo(18, 48);
+        this.bowString.strokePath();
+
+        const grip = this.add.circle(0, 0, 7, 0x92400e);
+        const arrowReady = this.add.rectangle(30, 0, 74, 7, 0xf8fafc);
+        const arrowHead = this.add.triangle(70, 0, 0, -9, 0, 9, 18, 0, 0xef4444);
+
+        this.bow.add([bowArc, this.bowString, grip, arrowReady, arrowHead]);
 
         this.tweens.add({
           targets: this.bow,
-          scaleX: 1.05,
-          scaleY: 1.05,
-          duration: 750,
+          scaleX: 1.04,
+          scaleY: 1.04,
+          duration: 800,
           yoyo: true,
           repeat: -1,
-          ease: "Sine.inOut",
         });
       }
 
-      rotateBow(x, y) {
-        const angle = Phaser.Math.Angle.Between(145, this.scale.height / 2, x, y);
-        if (this.bow) this.bow.rotation = angle;
+      createPowerBar(height) {
+        this.powerBar = this.add.rectangle(118, height / 2 + 102, 110, 12, 0x1e293b).setOrigin(0.5);
+        this.powerFill = this.add.rectangle(64, height / 2 + 102, 0, 8, 0xfacc15).setOrigin(0, 0.5);
       }
 
-      drawAimLine(x, y) {
+      rotateBow(x, y) {
+        const angle = Phaser.Math.Angle.Between(118, this.scale.height / 2, x, y);
+        this.bow.rotation = angle;
+      }
+
+      drawAim(x, y) {
+        const bowX = 118;
+        const bowY = this.scale.height / 2;
+        const distance = Phaser.Math.Distance.Between(bowX, bowY, x, y);
+        this.power = Phaser.Math.Clamp(distance / 260, 0.28, 1);
+
+        this.powerFill.width = 105 * this.power;
+
         this.aimLine.clear();
         this.aimLine.lineStyle(3, 0xfacc15, 0.8);
         this.aimLine.beginPath();
-        this.aimLine.moveTo(145, this.scale.height / 2);
+        this.aimLine.moveTo(bowX + 40, bowY);
         this.aimLine.lineTo(x, y);
         this.aimLine.strokePath();
 
@@ -257,8 +283,8 @@ export default function ArcheryGame({
       }
 
       clearQuestionObjects() {
-        this.targets.forEach((target) => target.destroy());
-        this.labels.forEach((label) => label.destroy());
+        this.targets.forEach((item) => item.destroy());
+        this.labels.forEach((item) => item.destroy());
         this.targets = [];
         this.labels = [];
 
@@ -267,7 +293,8 @@ export default function ArcheryGame({
           this.arrow = null;
         }
 
-        if (this.aimLine) this.aimLine.clear();
+        this.aimLine?.clear();
+        if (this.powerFill) this.powerFill.width = 0;
       }
 
       loadQuestion() {
@@ -280,80 +307,90 @@ export default function ArcheryGame({
 
         arrowsLeft = 3;
         canShoot = true;
+        this.power = 0;
+        syncHud("New question. 3 arrows loaded.");
 
         const width = this.scale.width;
         const height = this.scale.height;
-        const q = safeQuestions[currentIndex];
+        const question = safeQuestions[currentIndex];
 
-        this.questionText.setText(`Q${currentIndex + 1}. ${q.question}`);
-
+        this.questionText.setText(`Q${currentIndex + 1}. ${question.question}`);
         this.updateGameHud();
-        updateHud("New question. You have 3 arrows.");
 
-        const options = [...q.options].slice(0, 4);
-        const startY = height < 560 ? 150 : 170;
-        const gap = height < 560 ? 78 : 92;
-        const targetX = width - (width < 520 ? 105 : 155);
-        const difficultyBoost = currentIndex * 60;
+        const options = [...question.options].slice(0, 4);
+        const positions =
+          width < 700
+            ? [
+                [width - 125, 170],
+                [width - 125, 270],
+                [width - 125, 370],
+                [width - 125, 470],
+              ]
+            : [
+                [width - 320, 190],
+                [width - 150, 270],
+                [width - 320, 350],
+                [width - 150, 430],
+              ];
 
         options.forEach((answer, index) => {
-          const y = startY + index * gap;
-          const radius = width < 520 ? 34 : 42;
+          const [x, y] = positions[index];
+          const radius = width < 700 ? 37 : 46;
 
-          const outer = this.add.circle(targetX, y, radius, 0xef4444);
-          const middle = this.add.circle(targetX, y, width < 520 ? 25 : 31, 0xffffff);
-          const inner = this.add.circle(targetX, y, width < 520 ? 15 : 19, 0x2563eb);
+          const outer = this.add.circle(x, y, radius, 0x60a5fa);
+          const middle = this.add.circle(x, y, radius - 10, 0x111827);
+          const ring = this.add.circle(x, y, radius - 19, 0xfacc15);
+          const inner = this.add.circle(x, y, radius - 29, 0xef4444);
 
           const zone = this.add
-            .zone(targetX, y, width < 520 ? 82 : 96, width < 520 ? 82 : 96)
+            .zone(x, y, radius * 2.2, radius * 2.2)
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true });
 
           zone.answer = answer;
           zone.outer = outer;
           zone.middle = middle;
+          zone.ring = ring;
           zone.inner = inner;
 
           const label = this.add
-            .text(targetX, y + (width < 520 ? 43 : 53), answer, {
-              fontSize: width < 520 ? "15px" : "17px",
+            .text(x, y, answer, {
+              fontSize: width < 700 ? "15px" : "17px",
               color: "#ffffff",
               fontFamily: "Arial",
               fontStyle: "bold",
-              backgroundColor: "#111827",
-              padding: { x: 8, y: 4 },
             })
             .setOrigin(0.5);
 
-          const group = [outer, middle, inner, zone, label];
+          const group = [outer, middle, ring, inner, zone, label];
 
+          const difficulty = Math.min(450, currentIndex * 55);
           this.tweens.add({
             targets: group,
-            x: `+=${index % 2 === 0 ? 55 : -55}`,
+            x: `+=${index % 2 === 0 ? 70 : -70}`,
             y: `+=${index % 2 === 0 ? 18 : -18}`,
-            duration: Math.max(620, 1050 - difficultyBoost + index * 110),
+            duration: Math.max(620, 1150 - difficulty + index * 120),
             yoyo: true,
             repeat: -1,
             ease: "Sine.inOut",
           });
 
           this.tweens.add({
-            targets: [outer, middle, inner],
+            targets: [outer, middle, ring, inner],
             scaleX: 1.08,
             scaleY: 1.08,
-            duration: 560 + index * 80,
+            duration: 530 + index * 90,
             yoyo: true,
             repeat: -1,
-            ease: "Sine.inOut",
           });
 
-          this.targets.push(outer, middle, inner, zone);
+          this.targets.push(outer, middle, ring, inner, zone);
           this.labels.push(label);
         });
       }
 
-      shoot(targetX, targetY) {
-        if (arrowsLeft <= 0) return;
+      shoot(pointerX, pointerY) {
+        if (arrowsLeft <= 0 || !canShoot) return;
 
         canShoot = false;
         this.aimLine.clear();
@@ -361,26 +398,30 @@ export default function ArcheryGame({
         arrowsLeft -= 1;
         this.updateGameHud();
 
-        const startX = 145;
+        const startX = 162;
         const startY = this.scale.height / 2;
-        const q = safeQuestions[currentIndex];
+        const angle = Phaser.Math.Angle.Between(startX, startY, pointerX, pointerY);
+        const speed = 900 + this.power * 650;
 
-        const angle = Phaser.Math.Angle.Between(startX, startY, targetX, targetY);
-        const speed = 1040;
-
-        this.arrow = this.add.rectangle(startX, startY, 78, 7, 0xf8fafc).setOrigin(0.5);
-        this.physics.add.existing(this.arrow);
-
+        this.arrow = this.add.container(startX, startY);
+        const shaft = this.add.rectangle(0, 0, 84, 7, 0xf8fafc);
+        const head = this.add.triangle(47, 0, 0, -10, 0, 10, 20, 0, 0xef4444);
+        const feather1 = this.add.triangle(-38, -4, 0, 0, 0, 10, 14, 0, 0x38bdf8);
+        const feather2 = this.add.triangle(-38, 4, 0, 0, 0, -10, 14, 0, 0x60a5fa);
+        this.arrow.add([shaft, head, feather1, feather2]);
         this.arrow.rotation = angle;
+
+        this.physics.add.existing(this.arrow);
+        this.arrow.body.setSize(84, 12);
         this.arrow.body.setAllowGravity(false);
         this.arrow.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
 
         const trailTimer = this.time.addEvent({
-          delay: 28,
+          delay: 26,
           loop: true,
           callback: () => {
             if (!this.arrow || !this.arrow.active) return;
-            const trail = this.add.circle(this.arrow.x, this.arrow.y, 3, 0xfacc15, 0.65);
+            const trail = this.add.circle(this.arrow.x, this.arrow.y, 4, 0xfacc15, 0.65);
             this.tweens.add({
               targets: trail,
               alpha: 0,
@@ -391,48 +432,39 @@ export default function ArcheryGame({
           },
         });
 
-        const checkHit = this.time.addEvent({
+        const hitTimer = this.time.addEvent({
           delay: 16,
           loop: true,
           callback: () => {
             if (!this.arrow || !this.arrow.active) {
-              checkHit.remove(false);
+              hitTimer.remove(false);
               trailTimer.remove(false);
               return;
             }
 
             let hitZone = null;
-            const zones = this.targets.filter((target) => target.type === "Zone");
+            const zones = this.targets.filter((item) => item.type === "Zone");
 
             zones.forEach((zone) => {
               const distance = Phaser.Math.Distance.Between(this.arrow.x, this.arrow.y, zone.x, zone.y);
-              if (distance < 48) hitZone = zone;
+              if (distance < 50) hitZone = zone;
             });
 
             if (hitZone) {
-              checkHit.remove(false);
+              hitTimer.remove(false);
               trailTimer.remove(false);
               this.arrow.body.setVelocity(0, 0);
-
-              const isCorrect =
-                String(hitZone.answer).trim().toLowerCase() ===
-                String(q.answer).trim().toLowerCase();
-
-              if (isCorrect) {
-                this.handleCorrect(hitZone);
-              } else {
-                this.handleWrong(hitZone);
-              }
+              this.checkAnswer(hitZone);
               return;
             }
 
             if (
-              this.arrow.x > this.scale.width + 80 ||
-              this.arrow.x < -80 ||
-              this.arrow.y > this.scale.height + 80 ||
-              this.arrow.y < -80
+              this.arrow.x > this.scale.width + 90 ||
+              this.arrow.x < -90 ||
+              this.arrow.y > this.scale.height + 90 ||
+              this.arrow.y < -90
             ) {
-              checkHit.remove(false);
+              hitTimer.remove(false);
               trailTimer.remove(false);
               this.handleMiss();
             }
@@ -440,48 +472,48 @@ export default function ArcheryGame({
         });
       }
 
-      getArrowScore() {
+      checkAnswer(zone) {
+        const currentQuestion = safeQuestions[currentIndex];
+        const correct =
+          String(zone.answer).trim().toLowerCase() ===
+          String(currentQuestion.answer).trim().toLowerCase();
+
+        if (correct) this.handleCorrect(zone);
+        else this.handleWrong(zone);
+      }
+
+      getShotPoints() {
         if (arrowsLeft === 2) return 30;
         if (arrowsLeft === 1) return 20;
         return 10;
       }
 
       handleCorrect(zone) {
-        if (this.arrow) {
-          this.arrow.destroy();
-          this.arrow = null;
-        }
+        this.arrow?.destroy();
+        this.arrow = null;
 
-        const basePoints = this.getArrowScore();
+        const base = this.getShotPoints();
         combo += 1;
+
         const comboBonus = combo >= 3 ? 10 : 0;
         const perfectBonus = arrowsLeft === 2 ? 10 : 0;
-        const gained = basePoints + comboBonus + perfectBonus;
-        score += gained;
+        const total = base + comboBonus + perfectBonus;
 
-        this.flashTarget(zone, 0x22c55e);
-        this.createBurst(zone.x, zone.y, 0x22c55e, true);
+        score += total;
 
-        this.add
-          .text(zone.x, zone.y - 78, `+${gained} pts`, {
-            fontSize: "23px",
-            color: "#22c55e",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-          })
-          .setOrigin(0.5);
+        this.paintTarget(zone, 0x22c55e);
+        this.burst(zone.x, zone.y, 0x22c55e, true);
+        this.floatText(zone.x, zone.y - 80, `+${total}`, "#22c55e");
 
-        this.cameras.main.flash(140, 34, 197, 94);
+        if (perfectBonus) this.centerMessage("PERFECT SHOT!", "#facc15");
+        else if (comboBonus) this.centerMessage("COMBO BONUS!", "#38bdf8");
+        else this.centerMessage("CORRECT!", "#22c55e");
 
-        this.showFloatingMessage(
-          perfectBonus ? "PERFECT SHOT!" : comboBonus ? "COMBO BONUS!" : "CORRECT!",
-          perfectBonus ? "#facc15" : "#22c55e"
-        );
-
+        this.cameras.main.flash(130, 34, 197, 94);
         this.updateGameHud();
-        updateHud(`Correct! +${gained} points.`);
+        syncHud(`Correct! +${total} points.`);
 
-        this.time.delayedCall(900, () => {
+        this.time.delayedCall(850, () => {
           currentIndex += 1;
           if (currentIndex >= safeQuestions.length) this.endGame();
           else this.loadQuestion();
@@ -489,94 +521,142 @@ export default function ArcheryGame({
       }
 
       handleWrong(zone) {
-        if (this.arrow) {
-          this.arrow.destroy();
-          this.arrow = null;
-        }
+        this.arrow?.destroy();
+        this.arrow = null;
 
         combo = 0;
         score = Math.max(0, score - 5);
 
-        this.flashTarget(zone, 0xef4444);
-        this.createBurst(zone.x, zone.y, 0xef4444, false);
-        this.cameras.main.shake(170, 0.008);
-
-        this.showFloatingMessage("WRONG TARGET -5", "#ef4444");
+        this.paintTarget(zone, 0xef4444);
+        this.burst(zone.x, zone.y, 0xef4444, false);
+        this.centerMessage("WRONG -5", "#ef4444");
+        this.cameras.main.shake(160, 0.008);
 
         this.updateGameHud();
 
         if (arrowsLeft <= 0) {
-          updateHud("No arrows left. Moving to next question.");
-          this.time.delayedCall(900, () => {
+          syncHud("No arrows left. Next question.");
+          this.time.delayedCall(850, () => {
             currentIndex += 1;
             if (currentIndex >= safeQuestions.length) this.endGame();
             else this.loadQuestion();
           });
         } else {
-          updateHud(`Wrong target. ${arrowsLeft} arrow${arrowsLeft === 1 ? "" : "s"} left.`);
-          this.reloadArrow();
+          syncHud(`Wrong. Reloading... ${arrowsLeft} arrows left.`);
+          this.reload();
         }
       }
 
       handleMiss() {
-        if (this.arrow) {
-          this.arrow.destroy();
-          this.arrow = null;
-        }
+        this.arrow?.destroy();
+        this.arrow = null;
 
         combo = 0;
-        this.cameras.main.shake(130, 0.005);
-        this.showFloatingMessage("MISS!", "#f97316");
+        this.centerMessage("MISS!", "#f97316");
+        this.cameras.main.shake(130, 0.006);
         this.updateGameHud();
 
         if (arrowsLeft <= 0) {
-          updateHud("No arrows left. Moving to next question.");
-          this.time.delayedCall(900, () => {
+          syncHud("No arrows left. Next question.");
+          this.time.delayedCall(850, () => {
             currentIndex += 1;
             if (currentIndex >= safeQuestions.length) this.endGame();
             else this.loadQuestion();
           });
         } else {
-          updateHud(`Missed. Reloading... ${arrowsLeft} arrow${arrowsLeft === 1 ? "" : "s"} left.`);
-          this.reloadArrow();
+          syncHud(`Missed. Reloading... ${arrowsLeft} arrows left.`);
+          this.reload();
         }
       }
 
-      reloadArrow() {
-        this.reloadText = this.add
-          .text(145, this.scale.height / 2 - 90, "Reloading arrow...", {
-            fontSize: "19px",
+      reload() {
+        const reloadText = this.add
+          .text(118, this.scale.height / 2 - 96, "Reloading...", {
+            fontSize: "18px",
             color: "#facc15",
             fontFamily: "Arial",
             fontStyle: "bold",
           })
           .setOrigin(0.5);
 
-        const reloadArrow = this.add.text(145, this.scale.height / 2 + 80, "🏹", {
-          fontSize: "38px",
+        const arrowIcon = this.add.text(118, this.scale.height / 2 + 100, "🏹", {
+          fontSize: "42px",
         }).setOrigin(0.5);
 
         this.tweens.add({
-          targets: reloadArrow,
-          y: this.scale.height / 2 + 8,
+          targets: arrowIcon,
+          y: this.scale.height / 2 + 6,
           alpha: 0,
-          duration: 520,
+          duration: 540,
           ease: "Back.in",
           onComplete: () => {
-            reloadArrow.destroy();
-            if (this.reloadText) {
-              this.reloadText.destroy();
-              this.reloadText = null;
-            }
+            arrowIcon.destroy();
+            reloadText.destroy();
             canShoot = true;
           },
         });
       }
 
-      showFloatingMessage(text, color) {
-        const msg = this.add
-          .text(this.scale.width / 2, this.scale.height / 2 - 125, text, {
-            fontSize: "28px",
+      paintTarget(zone, color) {
+        zone.outer?.setFillStyle(color);
+        zone.middle?.setFillStyle(0x111827);
+        zone.ring?.setFillStyle(0xffffff);
+        zone.inner?.setFillStyle(color);
+
+        this.tweens.add({
+          targets: [zone.outer, zone.middle, zone.ring, zone.inner],
+          scaleX: 1.35,
+          scaleY: 1.35,
+          yoyo: true,
+          duration: 160,
+          ease: "Back.out",
+        });
+      }
+
+      burst(x, y, color, correct) {
+        const count = correct ? 46 : 24;
+
+        for (let i = 0; i < count; i++) {
+          const particle = this.add.circle(
+            x,
+            y,
+            Phaser.Math.Between(3, 8),
+            color,
+            Phaser.Math.FloatBetween(0.75, 1)
+          );
+
+          this.tweens.add({
+            targets: particle,
+            x: x + Phaser.Math.Between(-150, 150),
+            y: y + Phaser.Math.Between(-130, 130),
+            alpha: 0,
+            scale: 0,
+            duration: correct ? 680 : 470,
+            ease: "Cubic.out",
+            onComplete: () => particle.destroy(),
+          });
+        }
+
+        if (correct) {
+          for (let i = 0; i < 14; i++) {
+            const star = this.add.text(x, y, "⭐", { fontSize: "19px" }).setOrigin(0.5);
+            this.tweens.add({
+              targets: star,
+              x: x + Phaser.Math.Between(-120, 120),
+              y: y + Phaser.Math.Between(-110, 110),
+              alpha: 0,
+              scale: 0.2,
+              duration: 760,
+              onComplete: () => star.destroy(),
+            });
+          }
+        }
+      }
+
+      floatText(x, y, text, color) {
+        const item = this.add
+          .text(x, y, text, {
+            fontSize: "26px",
             color,
             fontFamily: "Arial",
             fontStyle: "bold",
@@ -584,78 +664,38 @@ export default function ArcheryGame({
           .setOrigin(0.5);
 
         this.tweens.add({
-          targets: msg,
-          y: msg.y - 35,
+          targets: item,
+          y: y - 45,
           alpha: 0,
           duration: 800,
-          onComplete: () => msg.destroy(),
+          onComplete: () => item.destroy(),
+        });
+      }
+
+      centerMessage(text, color) {
+        const item = this.add
+          .text(this.scale.width / 2, this.scale.height / 2 - 125, text, {
+            fontSize: "32px",
+            color,
+            fontFamily: "Arial",
+            fontStyle: "bold",
+          })
+          .setOrigin(0.5);
+
+        this.tweens.add({
+          targets: item,
+          y: item.y - 45,
+          alpha: 0,
+          scale: 1.15,
+          duration: 850,
+          onComplete: () => item.destroy(),
         });
       }
 
       updateGameHud() {
-        if (this.scoreText) this.scoreText.setText(`Score: ${score}`);
-        if (this.comboText) this.comboText.setText(`Combo: ${combo}`);
-        if (this.arrowText) {
-          const arrows = "🏹".repeat(Math.max(0, arrowsLeft)) || "❌";
-          this.arrowText.setText(`Arrows: ${arrows}`);
-        }
-      }
-
-      flashTarget(zone, color) {
-        if (!zone?.outer || !zone?.middle || !zone?.inner) return;
-
-        zone.outer.setFillStyle(color);
-        zone.middle.setFillStyle(0xffffff);
-        zone.inner.setFillStyle(color);
-
-        this.tweens.add({
-          targets: [zone.outer, zone.middle, zone.inner],
-          scaleX: 1.35,
-          scaleY: 1.35,
-          duration: 160,
-          yoyo: true,
-          ease: "Back.out",
-        });
-      }
-
-      createBurst(x, y, color, correct) {
-        const count = correct ? 40 : 22;
-
-        for (let i = 0; i < count; i++) {
-          const particle = this.add.circle(
-            x,
-            y,
-            Phaser.Math.Between(3, 7),
-            color,
-            Phaser.Math.FloatBetween(0.75, 1)
-          );
-
-          this.tweens.add({
-            targets: particle,
-            x: x + Phaser.Math.Between(-140, 140),
-            y: y + Phaser.Math.Between(-120, 120),
-            alpha: 0,
-            scale: 0,
-            duration: correct ? 650 : 470,
-            ease: "Cubic.out",
-            onComplete: () => particle.destroy(),
-          });
-        }
-
-        if (correct) {
-          for (let i = 0; i < 12; i++) {
-            const star = this.add.text(x, y, "⭐", { fontSize: "18px" }).setOrigin(0.5);
-            this.tweens.add({
-              targets: star,
-              x: x + Phaser.Math.Between(-110, 110),
-              y: y + Phaser.Math.Between(-100, 100),
-              alpha: 0,
-              scale: 0.2,
-              duration: 720,
-              onComplete: () => star.destroy(),
-            });
-          }
-        }
+        this.scoreText?.setText(`Score: ${score}`);
+        this.comboText?.setText(`Combo: ${combo}`);
+        this.arrowText?.setText("🏹".repeat(Math.max(0, arrowsLeft)) || "❌");
       }
 
       endGame() {
@@ -666,15 +706,15 @@ export default function ArcheryGame({
 
         const width = this.scale.width;
         const height = this.scale.height;
-        const correctCount = Math.round(score / 30);
+
         const xp = Math.max(20, Math.round(score / 2));
         const coins = Math.max(10, Math.round(score / 8));
 
-        this.add.rectangle(width / 2, height / 2, Math.min(width - 40, 560), 320, 0x111827, 0.96);
+        this.add.rectangle(width / 2, height / 2, Math.min(width - 40, 600), 340, 0x111827, 0.96);
 
         this.add
-          .text(width / 2, height / 2 - 112, "🏆 Arena Complete", {
-            fontSize: width < 520 ? "25px" : "34px",
+          .text(width / 2, height / 2 - 122, "🏆 Arena Complete", {
+            fontSize: width < 600 ? "27px" : "38px",
             color: "#ffffff",
             fontFamily: "Arial",
             fontStyle: "bold",
@@ -683,7 +723,7 @@ export default function ArcheryGame({
 
         this.add
           .text(width / 2, height / 2 - 42, `Final Score: ${score}`, {
-            fontSize: "26px",
+            fontSize: "29px",
             color: "#facc15",
             fontFamily: "Arial",
             fontStyle: "bold",
@@ -691,7 +731,7 @@ export default function ArcheryGame({
           .setOrigin(0.5);
 
         this.add
-          .text(width / 2, height / 2 + 12, `Reward: +${xp} XP · +${coins} Coins`, {
+          .text(width / 2, height / 2 + 18, `Reward: +${xp} XP · +${coins} Coins`, {
             fontSize: "21px",
             color: "#22c55e",
             fontFamily: "Arial",
@@ -699,25 +739,24 @@ export default function ArcheryGame({
           .setOrigin(0.5);
 
         this.add
-          .text(width / 2, height / 2 + 64, "Exit to return to Student OS", {
+          .text(width / 2, height / 2 + 78, "Click Exit to return to Student OS", {
             fontSize: "16px",
             color: "#cbd5e1",
             fontFamily: "Arial",
           })
           .setOrigin(0.5);
 
-        this.createBurst(width / 2, height / 2 + 110, 0xfacc15, true);
+        this.burst(width / 2, height / 2 + 125, 0xfacc15, true);
 
-        updateHud("Game complete.");
+        syncHud("Game complete.");
 
-        if (!rewardedRef.current && typeof onReward === "function") {
-          rewardedRef.current = true;
+        if (!rewardSentRef.current && typeof onReward === "function") {
+          rewardSentRef.current = true;
           onReward({
             xp,
             coins,
             score,
             total: safeQuestions.length,
-            correct: correctCount,
             mode: "archery-pro",
           });
         }
@@ -727,10 +766,10 @@ export default function ArcheryGame({
     const config = {
       type: Phaser.AUTO,
       parent: containerRef.current,
-      width: 960,
-      height: 600,
+      width: 1080,
+      height: 640,
       backgroundColor: "#020617",
-      scene: ArcheryScene,
+      scene: ProArcheryScene,
       physics: {
         default: "arcade",
         arcade: {
@@ -757,7 +796,7 @@ export default function ArcheryGame({
   return (
     <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950 p-3 text-white sm:p-5">
       <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col">
-        <div className="mb-3 flex flex-col gap-3 rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-3 flex flex-col gap-3 rounded-3xl border border-slate-800 bg-slate-900/90 p-4 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-black sm:text-3xl">
               🏹 Archery Pro Arena
