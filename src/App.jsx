@@ -50,6 +50,7 @@ import {
   Rss,
   Heart,
   ThumbsUp,
+  Menu,
 } from "lucide-react";
 
 function StudentOSApp({ user }) {
@@ -58,6 +59,7 @@ function StudentOSApp({ user }) {
   const [cloudError, setCloudError] = useState("");
 
   const [activePage, setActivePage] = useState("dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("studentOS_theme") || "light");
   const isDark = theme === "dark";
 
@@ -223,6 +225,7 @@ function StudentOSApp({ user }) {
     setCloudError("");
 
     setActivePage("dashboard");
+    setMobileMenuOpen(false);
     setProfile({
       name: user.displayName || user.email?.split("@")[0] || "Student",
       username: "",
@@ -1645,8 +1648,19 @@ function StudentOSApp({ user }) {
   };
 
   const addAttendanceItem = () => {
-    if (!attSubject.trim() || !attAttended || !attConducted || !attTarget) {
+    const cleanSubject = attSubject.trim().replace(/\s+/g, " ");
+    const subjectKey = cleanSubject.toLowerCase();
+
+    if (!cleanSubject || !attAttended || !attConducted || !attTarget) {
       return showToast("Missing Details", "Fill subject, attended, conducted and target.", "⚠️");
+    }
+
+    const duplicateSubject = attendanceItems.some((item) =>
+      String(item.subject || "").trim().replace(/\s+/g, " ").toLowerCase() === subjectKey
+    );
+
+    if (duplicateSubject) {
+      return showToast("Subject Already Exists", `${cleanSubject} is already added in Attendance. Edit/delete the existing subject instead.`, "🚫");
     }
 
     const attended = Number(attAttended);
@@ -1669,7 +1683,7 @@ function StudentOSApp({ user }) {
     setAttendanceItems((prev) => [
       {
         id: Date.now(),
-        subject: attSubject.trim(),
+        subject: cleanSubject,
         attended,
         conducted,
         target,
@@ -1692,7 +1706,7 @@ function StudentOSApp({ user }) {
       type: "attendance",
       emoji: "🎯",
       title: `${profile.name || "A student"} updated attendance`,
-      message: `${attSubject.trim()} attendance is now tracked.`,
+      message: `${cleanSubject} attendance is now tracked.`,
     });
   };
 
@@ -1707,23 +1721,46 @@ function StudentOSApp({ user }) {
   }
 
   const addInternalSubject = () => {
-    if (!internalSubjectName.trim()) return showToast("Missing Subject", "Enter subject name first.", "⚠️");
-    const newSubject = { id: Date.now(), name: internalSubjectName.trim(), components: [] };
+    const cleanName = internalSubjectName.trim().replace(/\s+/g, " ");
+    const subjectKey = cleanName.toLowerCase();
+
+    if (!cleanName) return showToast("Missing Subject", "Enter subject name first.", "⚠️");
+
+    const duplicateSubject = internalSubjects.some((subject) =>
+      String(subject.name || "").trim().replace(/\s+/g, " ").toLowerCase() === subjectKey
+    );
+
+    if (duplicateSubject) {
+      return showToast("Subject Already Exists", `${cleanName} is already added in Internals. Select that subject and add components there.`, "🚫");
+    }
+
+    const newSubject = { id: Date.now(), name: cleanName, components: [] };
     setInternalSubjects((prev) => [newSubject, ...prev]);
     setSelectedInternalSubject(String(newSubject.id));
-    setInternalSubjectName(""); addXp(5);
+    setInternalSubjectName("");
+    addXp(5);
     showToast("Internal Subject Added", "+5 XP. Add CIA, Skill, Model Lab or Record components.", "📝");
   };
 
   const addInternalComponent = () => {
+    const cleanComponentName = componentName.trim().replace(/\s+/g, " ");
     if (!selectedInternalSubject) return showToast("Select Subject", "Choose a subject before adding a component.", "⚠️");
-    if (!componentName.trim() || !componentWeight) return showToast("Missing Component", "Enter component name and weightage.", "⚠️");
+    if (!cleanComponentName || !componentWeight) return showToast("Missing Component", "Enter component name and weightage.", "⚠️");
     if (componentStatus === "completed" && (!componentScored || !componentConducted)) return showToast("Missing Marks", "Completed components need scored and conducted marks.", "⚠️");
     if (componentStatus === "completed" && Number(componentScored) > Number(componentConducted)) return showToast("Invalid Marks", "Scored marks cannot exceed conducted marks.", "⚠️");
 
+    const selectedSubject = internalSubjects.find((subject) => String(subject.id) === String(selectedInternalSubject));
+    const duplicateComponent = selectedSubject?.components?.some((component) =>
+      String(component.name || "").trim().replace(/\s+/g, " ").toLowerCase() === cleanComponentName.toLowerCase()
+    );
+
+    if (duplicateComponent) {
+      return showToast("Component Already Exists", `${cleanComponentName} already exists for ${selectedSubject?.name || "this subject"}. Delete/edit the old component first.`, "🚫");
+    }
+
     const component = {
       id: Date.now(),
-      name: componentName.trim(),
+      name: cleanComponentName,
       status: componentStatus,
       scored: componentStatus === "completed" ? Number(componentScored) : "",
       conducted: componentStatus === "completed" ? Number(componentConducted) : "",
@@ -2102,6 +2139,10 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
   const inputClass = isDark
     ? "bg-white/10 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-slate-400"
     : "bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400";
+
+  const selectClass = isDark
+    ? "bg-[#1f2937] border border-white/10 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 text-white"
+    : "bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 text-slate-900";
 
   const exportStudentOSData = () => {
     const data = {
@@ -2553,6 +2594,19 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         setMilestonePopup={setMilestonePopup}
       />
 
+      <style>{`
+        .student-os-root select {
+          background-color: ${isDark ? "#1f2937" : "#ffffff"} !important;
+          color: ${isDark ? "#ffffff" : "#0f172a"} !important;
+          border-color: ${isDark ? "rgba(255,255,255,0.15)" : "#e5e7eb"} !important;
+          color-scheme: ${isDark ? "dark" : "light"};
+        }
+        .student-os-root select option {
+          background-color: ${isDark ? "#1f2937" : "#ffffff"} !important;
+          color: ${isDark ? "#ffffff" : "#0f172a"} !important;
+        }
+      `}</style>
+
       {showCheckIn && <CheckInModal handleMood={handleMood} setShowCheckIn={setShowCheckIn} />}
 
       <aside className={`hidden md:flex w-64 border-r p-6 flex-col transition-colors duration-500 ${sidebarClass}`}>
@@ -2583,19 +2637,85 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 w-full max-w-full overflow-x-hidden p-3 pb-24 md:p-7 md:pb-7">
-        <div className="md:hidden flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-black text-blue-600">Student OS</h1>
-            <p className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>Your student command center</p>
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            className="md:hidden fixed inset-0 z-[100]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close menu overlay"
+            />
+            <motion.aside
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              transition={{ type: "spring", stiffness: 260, damping: 28 }}
+              className={`relative h-full w-[82%] max-w-[320px] border-r p-5 overflow-y-auto ${sidebarClass}`}
+            >
+              <div className="flex items-center justify-between mb-7">
+                <div>
+                  <h1 className="text-2xl font-black text-blue-500">Student OS</h1>
+                  <p className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>Menu</p>
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={isDark ? "w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center" : "w-10 h-10 rounded-2xl bg-gray-100 text-slate-900 flex items-center justify-center"}
+                  aria-label="Close menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <nav className="space-y-2">
+                <NavItem active={activePage === "dashboard"} onClick={() => { setActivePage("dashboard"); setMobileMenuOpen(false); }} icon={<BarChart3 size={20} />} label="Dashboard" navHover={navHover} />
+                <NavItem active={activePage === "attendance"} onClick={() => { setActivePage("attendance"); setMobileMenuOpen(false); }} icon={<BarChart3 size={20} />} label="Attendance" navHover={navHover} />
+                <NavItem active={activePage === "internals"} onClick={() => { setActivePage("internals"); setMobileMenuOpen(false); }} icon={<NotebookPen size={20} />} label="Internals" navHover={navHover} />
+                <NavItem active={activePage === "semester"} onClick={() => { setActivePage("semester"); setMobileMenuOpen(false); }} icon={<GraduationCap size={20} />} label="Semester" navHover={navHover} />
+                <NavItem active={activePage === "calendar"} onClick={() => { setActivePage("calendar"); setMobileMenuOpen(false); }} icon={<CalendarDays size={20} />} label="Calendar" navHover={navHover} />
+                <NavItem active={activePage === "reminders"} onClick={() => { setActivePage("reminders"); setMobileMenuOpen(false); }} icon={<Bell size={20} />} label="Reminders" navHover={navHover} />
+                <NavItem active={activePage === "notifications"} onClick={() => { setActivePage("notifications"); setMobileMenuOpen(false); }} icon={<Bell size={20} />} label={`Notifications${unreadNotificationCount ? ` (${unreadNotificationCount})` : ""}`} navHover={navHover} />
+                <NavItem active={activePage === "ai"} onClick={() => { setActivePage("ai"); setMobileMenuOpen(false); }} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
+                <NavItem active={activePage === "achievements"} onClick={() => { setActivePage("achievements"); setMobileMenuOpen(false); }} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
+                <NavItem active={activePage === "quest"} onClick={() => { setActivePage("quest"); setMobileMenuOpen(false); }} icon={<Target size={20} />} label="Study RPG" navHover={navHover} />
+                <NavItem active={activePage === "analytics"} onClick={() => { setActivePage("analytics"); setMobileMenuOpen(false); }} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
+                <NavItem active={activePage === "feed"} onClick={() => { setActivePage("feed"); setMobileMenuOpen(false); }} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
+                <NavItem active={activePage === "opportunities"} onClick={() => { setActivePage("opportunities"); setMobileMenuOpen(false); }} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
+                <NavItem active={activePage === "verified"} onClick={() => { setActivePage("verified"); setMobileMenuOpen(false); }} icon={<CheckCircle2 size={20} />} label="Verified Student" navHover={navHover} />
+                <NavItem active={activePage === "social"} onClick={() => { setActivePage("social"); setMobileMenuOpen(false); }} icon={<Users size={20} />} label="Students" navHover={navHover} />
+                <NavItem active={activePage === "portfolio"} onClick={() => { setActivePage("portfolio"); setMobileMenuOpen(false); }} icon={<GraduationCap size={20} />} label="My Profile" navHover={navHover} />
+                <NavItem active={activePage === "leaderboard"} onClick={() => { setActivePage("leaderboard"); setMobileMenuOpen(false); }} icon={<Trophy size={20} />} label="Leaderboard" navHover={navHover} />
+                <NavItem active={activePage === "settings"} onClick={() => { setActivePage("settings"); setMobileMenuOpen(false); }} icon={<Settings size={20} />} label="Settings" navHover={navHover} />
+              </nav>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <main className="flex-1 min-w-0 w-full max-w-full overflow-x-hidden p-3 pb-7 md:p-7 md:pb-7">
+        <div className="md:hidden sticky top-0 z-50 -mx-3 mb-4 px-3 py-3 backdrop-blur-xl bg-slate-950/80 border-b border-white/10 flex items-center justify-between">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg"
+            aria-label="Open menu"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="text-center">
+            <h1 className="text-xl font-black text-blue-400 leading-tight">Student OS</h1>
+            <p className="text-[11px] text-slate-400">Your student command center</p>
           </div>
           <button
             onClick={toggleTheme}
             className={isDark
-              ? "bg-white/10 border border-white/10 text-white px-3 py-2 rounded-2xl text-sm font-bold flex items-center gap-2"
-              : "bg-white border border-gray-200 text-slate-900 px-3 py-2 rounded-2xl text-sm font-bold flex items-center gap-2 shadow"}
+              ? "bg-white/10 border border-white/10 text-white px-3 py-2 rounded-2xl text-xs font-bold flex items-center gap-2"
+              : "bg-white border border-gray-200 text-slate-900 px-3 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 shadow"}
           >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
             {isDark ? "Light" : "Dark"}
           </button>
         </div>
@@ -3142,7 +3262,6 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         currentScoreData={getLeaderboardScoreData()}
       />
 
-      <MobileBottomNav activePage={activePage} setActivePage={setActivePage} isDark={isDark} />
     </div>
   );
 }
