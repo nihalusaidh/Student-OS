@@ -2490,8 +2490,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
           <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
           <NavItem active={activePage === "opportunities"} onClick={() => setActivePage("opportunities")} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
           <NavItem active={activePage === "social"} onClick={() => setActivePage("social")} icon={<Users size={20} />} label="Students" navHover={navHover} />
-          <NavItem active={activePage === "portfolio"} onClick={() => setActivePage("portfolio")} icon={<GraduationCap size={20} />} label="Portfolio" navHover={navHover} />
-          <NavItem active={activePage === "publicProfile"} onClick={() => setActivePage("publicProfile")} icon={<Eye size={20} />} label="Public Profile" navHover={navHover} />
+          <NavItem active={activePage === "portfolio"} onClick={() => setActivePage("portfolio")} icon={<GraduationCap size={20} />} label="My Profile" navHover={navHover} />
           <NavItem active={activePage === "leaderboard"} onClick={() => setActivePage("leaderboard")} icon={<Trophy size={20} />} label="Leaderboard" navHover={navHover} />
           <NavItem active={activePage === "settings"} onClick={() => setActivePage("settings")} icon={<Settings size={20} />} label="Settings" navHover={navHover} />
         </nav>
@@ -2977,35 +2976,6 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
                 calendarEvents={calendarEvents}
                 reminders={reminders}
                 setActivePage={setActivePage}
-              />
-            </PageMotion>
-          )}
-
-          {activePage === "publicProfile" && (
-            <PageMotion key="public-profile">
-              <PublicStudentProfilePage
-                isDark={isDark}
-                cardClass={cardClass}
-                user={user}
-                profile={profile}
-                publicProfile={getLeaderboardData()}
-                scoreData={getLeaderboardScoreData()}
-                achievements={achievements}
-                allAchievements={allAchievements}
-                xp={xp}
-                level={level}
-                streak={streak}
-                forest={forest}
-                careerStage={careerStage}
-                careerProgress={careerProgress}
-                notes={notes}
-                opportunities={opportunities}
-                connectedStudents={connectedStudents}
-                attendanceAverage={attendanceAverage}
-                internalAverage={internalAverage}
-                smartHealth={smartHealth}
-                setActivePage={setActivePage}
-                showToast={showToast}
               />
             </PageMotion>
           )}
@@ -5351,144 +5321,6 @@ function StudentSocialCard({ isDark, row, connectionStatus = "none", onFollow, o
   );
 }
 
-
-function PublicStudentProfilePage({ isDark, cardClass, user, profile, publicProfile, scoreData, achievements, allAchievements, xp, level, streak, forest, careerStage, careerProgress, notes, opportunities, connectedStudents, attendanceAverage, internalAverage, smartHealth, setActivePage, showToast }) {
-  const uploadedNotes = notes.filter((item) => item.userId === user?.uid);
-  const postedOpportunities = opportunities.filter((item) => item.userId === user?.uid);
-  const unlocked = allAchievements.filter((item) => achievements.includes(item.id));
-  const username = profile?.username || profile?.profileNameKey || profile?.name?.toLowerCase()?.replace(/[^a-z0-9]+/g, "-") || user?.uid || "student";
-  const profileUrl = `${window.location.origin}/u/${username}`;
-
-  const copyProfileLink = async () => {
-    try {
-      await navigator.clipboard.writeText(profileUrl);
-      showToast("Profile Link Copied", "Your public profile link is ready to share.", "🔗");
-    } catch (error) {
-      showToast("Copy Failed", "Could not copy the profile link.", "⚠️");
-    }
-  };
-
-  return (
-    <section className="space-y-5 mt-5">
-      <div className={`${cardClass} overflow-hidden rounded-3xl`}>
-        <div className={isDark ? "bg-gradient-to-r from-blue-950 via-indigo-950 to-purple-950 p-6" : "bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white"}>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-3xl bg-white/20 border border-white/20 flex items-center justify-center text-3xl font-black overflow-hidden">
-                {user?.photoURL ? <img src={user.photoURL} alt="profile" className="w-full h-full object-cover" /> : (profile?.name || "S").slice(0, 1).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-bold text-blue-100">Public Student Profile</p>
-                <h2 className="text-3xl md:text-4xl font-black mt-1">{profile?.name || "Student"}</h2>
-                <p className="text-sm text-blue-100 mt-1">@{username}</p>
-                <p className="text-sm text-blue-100 mt-1">{profile?.department || profile?.degree || "Student"} · Year {profile?.year || "-"} {profile?.college ? `· ${profile.college}` : ""}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={copyProfileLink} className="bg-white text-blue-700 px-4 py-2 rounded-xl font-black text-sm">Copy Link</button>
-              <button onClick={() => setActivePage("settings")} className="bg-white/20 border border-white/20 text-white px-4 py-2 rounded-xl font-black text-sm">Edit Profile</button>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-5 grid md:grid-cols-4 gap-3">
-          <PublicStat isDark={isDark} emoji="⚡" label="XP Level" value={`Level ${level}`} sub={`${xp} XP`} />
-          <PublicStat isDark={isDark} emoji="🏆" label="Score" value={Number(scoreData?.score || 0).toFixed(1)} sub="Student OS rank score" />
-          <PublicStat isDark={isDark} emoji="🔥" label="Streak" value={`${streak} days`} sub="Consistency" />
-          <PublicStat isDark={isDark} emoji="🎓" label="Career Stage" value={careerStage?.name || "Freshman"} sub={`${careerProgress || 0}% to next`} />
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-5">
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">About</h3>
-          <p className="mt-3 text-sm leading-6 text-gray-500">{profile?.bio || "No bio added yet. Add a short bio in Settings to make your profile stronger."}</p>
-          <div className="grid md:grid-cols-2 gap-3 mt-4 text-sm">
-            <ProfileInfo isDark={isDark} label="College" value={profile?.college || "Not added"} />
-            <ProfileInfo isDark={isDark} label="Department" value={profile?.department || profile?.degree || "Not added"} />
-            <ProfileInfo isDark={isDark} label="Country" value={profile?.country || "Not added"} />
-            <ProfileInfo isDark={isDark} label="Username" value={`@${username}`} />
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {profile?.github && <a href={safeExternalUrl(profile.github)} target="_blank" rel="noreferrer" className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm">GitHub</a>}
-            {profile?.linkedin && <a href={safeExternalUrl(profile.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm">LinkedIn</a>}
-            {profile?.portfolioWebsite && <a href={safeExternalUrl(profile.portfolioWebsite)} target="_blank" rel="noreferrer" className="bg-purple-600 text-white px-4 py-2 rounded-xl font-bold text-sm">Portfolio</a>}
-          </div>
-        </div>
-
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Academic Reputation</h3>
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <PublicStat isDark={isDark} emoji="📊" label="Attendance" value={`${attendanceAverage || 0}%`} sub="Average" />
-            <PublicStat isDark={isDark} emoji="📝" label="Internals" value={`${internalAverage || 0}%`} sub="Performance" />
-            <PublicStat isDark={isDark} emoji="🧠" label="Smart Health" value={`${smartHealth || 0}%`} sub="AI score" />
-            <PublicStat isDark={isDark} emoji="🤝" label="Connections" value={connectedStudents.length} sub="Network" />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Notes Contribution</h3>
-          <p className="text-4xl font-black mt-3">{uploadedNotes.length}</p>
-          <p className="text-sm text-gray-500 mt-1">Notes uploaded to help students</p>
-          <button onClick={() => setActivePage("feed")} className="mt-4 w-full bg-blue-600 text-white py-2 rounded-xl font-bold">Open Notes Hub</button>
-        </div>
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Opportunities Posted</h3>
-          <p className="text-4xl font-black mt-3">{postedOpportunities.length}</p>
-          <p className="text-sm text-gray-500 mt-1">Projects, internships, events or team requests</p>
-          <button onClick={() => setActivePage("opportunities")} className="mt-4 w-full bg-purple-600 text-white py-2 rounded-xl font-bold">Open Opportunities</button>
-        </div>
-        <div className={`${cardClass} p-5 rounded-2xl`}>
-          <h3 className="text-xl font-black">Achievements</h3>
-          <p className="text-4xl font-black mt-3">{unlocked.length}</p>
-          <p className="text-sm text-gray-500 mt-1">Unlocked badges</p>
-          <button onClick={() => setActivePage("achievements")} className="mt-4 w-full bg-orange-500 text-white py-2 rounded-xl font-bold">View Badges</button>
-        </div>
-      </div>
-
-      <div className={`${cardClass} p-5 rounded-2xl`}>
-        <h3 className="text-xl font-black">Featured Badges</h3>
-        {unlocked.length ? (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
-            {unlocked.slice(0, 12).map((badge) => (
-              <div key={badge.id} className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4 text-center" : "bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center"}>
-                <p className="text-4xl">{badge.emoji}</p>
-                <p className="font-bold text-xs mt-2">{badge.title}</p>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState emoji="🏆" title="No public badges yet" message="Complete missions, upload notes, and defeat bosses to unlock badges." />}
-      </div>
-    </section>
-  );
-}
-
-function PublicStat({ isDark, emoji, label, value, sub }) {
-  return (
-    <div className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4" : "bg-gray-50 border border-gray-200 rounded-2xl p-4"}>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-xl font-black mt-1">{value}</p>
-          <p className="text-xs text-gray-500 mt-1">{sub}</p>
-        </div>
-        <p className="text-3xl">{emoji}</p>
-      </div>
-    </div>
-  );
-}
-
-function ProfileInfo({ isDark, label, value }) {
-  return (
-    <div className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-3" : "bg-gray-50 border border-gray-200 rounded-2xl p-3"}>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="font-bold mt-1 break-words">{value}</p>
-    </div>
-  );
-}
-
 function SocialProfileModal({ isDark, student, onClose, isFollowing, onFollow, onUnfollow }) {
   if (!student) return null;
   return (
@@ -5528,16 +5360,7 @@ function SocialProfileModal({ isDark, student, onClose, isFollowing, onFollow, o
           ) : (
             <p className="mt-5 text-sm text-gray-500 text-center">Connect and wait for acceptance to unlock contact links.</p>
           )}
-          <button
-            onClick={() => {
-              const username = student.username || student.profileNameKey || student.displayName?.toLowerCase()?.replace(/[^a-z0-9]+/g, "-") || student.id;
-              navigator.clipboard?.writeText(`${window.location.origin}/u/${username}`);
-            }}
-            className="mt-5 w-full bg-blue-600 text-white py-3 rounded-xl font-bold"
-          >
-            🔗 Copy Public Profile Link
-          </button>
-          <button onClick={() => isFollowing ? onUnfollow(student) : onFollow(student)} className={isFollowing ? "mt-3 w-full bg-gray-600 text-white py-3 rounded-xl font-bold" : "mt-3 w-full bg-green-600 text-white py-3 rounded-xl font-bold"}>
+          <button onClick={() => isFollowing ? onUnfollow(student) : onFollow(student)} className={isFollowing ? "mt-5 w-full bg-gray-600 text-white py-3 rounded-xl font-bold" : "mt-5 w-full bg-green-600 text-white py-3 rounded-xl font-bold"}>
             {isFollowing ? "Connected" : "+ Connect Student"}
           </button>
         </motion.div>
@@ -5857,6 +5680,7 @@ function ScoreBar({ label, value, max }) {
 
 
 function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreData, achievements, allAchievements, xp, level, streak, forest, pet, kingdom, attendanceAverage, internalAverage, smartHealth, currentGpa, targetGpa, calendarEvents, reminders, setActivePage }) {
+  const [publicMode, setPublicMode] = useState(false);
   const username = profile?.profileName || profile?.username || (profile?.name || user?.displayName || "student").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const portfolioUrl = `${window.location.origin}/student/${username}`;
   const unlocked = allAchievements.filter((item) => achievements.includes(item.id)).slice(0, 8);
@@ -5866,9 +5690,28 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
   const copyPortfolio = async () => {
     try {
       await navigator.clipboard.writeText(portfolioUrl);
-      alert("Portfolio link copied!");
+      alert("Profile link copied!");
     } catch {
       alert(portfolioUrl);
+    }
+  };
+
+  const sharePortfolio = async () => {
+    const shareData = {
+      title: `${profile?.name || user?.displayName || "Student"} on Student OS`,
+      text: `View ${profile?.name || "this student"}'s Student OS profile`,
+      url: portfolioUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(portfolioUrl);
+        alert("Profile link copied!");
+      }
+    } catch {
+      // User cancelled native share. No action needed.
     }
   };
 
@@ -5884,10 +5727,13 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
               {user?.photoURL ? <img src={user.photoURL} alt="profile" className="w-full h-full object-cover" /> : (profile?.name || user?.displayName || "S").slice(0, 1).toUpperCase()}
             </div>
             <div>
-              <p className="text-sm text-gray-500">Student OS Portfolio</p>
+              <p className="text-sm text-gray-500">My Profile</p>
               <h2 className="text-3xl md:text-5xl font-black leading-tight">{profile?.name || user?.displayName || "Student"}</h2>
               <p className="text-sm text-gray-500 mt-1">@{username} · {profile?.degree || "Student"} {profile?.college ? `· ${profile.college}` : ""}</p>
               <p className="text-sm text-gray-500 mt-1">{profile?.showEmail ? user?.email : "Email hidden from public profile"}</p>
+              <p className={publicMode ? "inline-block mt-2 text-xs font-bold bg-green-600 text-white px-3 py-1 rounded-full" : "inline-block mt-2 text-xs font-bold bg-blue-600 text-white px-3 py-1 rounded-full"}>
+                {publicMode ? "Public View" : "Owner View"}
+              </p>
               <div className="flex flex-wrap gap-2 mt-3 text-xs font-bold">
                 {profile?.github && <a href={safeExternalUrl(profile.github)} target="_blank" rel="noreferrer" className="bg-slate-700 text-white px-3 py-2 rounded-xl">GitHub</a>}
                 {profile?.linkedin && <a href={safeExternalUrl(profile.linkedin)} target="_blank" rel="noreferrer" className="bg-blue-700 text-white px-3 py-2 rounded-xl">LinkedIn</a>}
@@ -5897,13 +5743,17 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
           </div>
 
           <div className="grid grid-cols-2 gap-3 min-w-[260px]">
-            <button onClick={copyPortfolio} className="glow-btn bg-blue-600 text-white px-4 py-3 rounded-xl font-bold">Copy Link</button>
-            {profile?.showEmail ? (
-              <a href={`mailto:${user?.email || ""}`} className="glow-btn bg-green-600 text-white px-4 py-3 rounded-xl font-bold text-center">Email Me</a>
-            ) : (
-              <button disabled className="bg-gray-400 text-white px-4 py-3 rounded-xl font-bold opacity-80">Email Hidden</button>
+            {!publicMode && (
+              <button onClick={() => setActivePage("settings")} className="glow-btn bg-blue-600 text-white px-4 py-3 rounded-xl font-bold">Edit Profile</button>
             )}
-            <button onClick={() => setActivePage("social")} className="glow-btn bg-purple-600 text-white px-4 py-3 rounded-xl font-bold">Connections</button>
+            <button onClick={() => setPublicMode((value) => !value)} className="glow-btn bg-slate-700 text-white px-4 py-3 rounded-xl font-bold">
+              {publicMode ? "My Mode" : "Public Mode"}
+            </button>
+            <button onClick={copyPortfolio} className="glow-btn bg-indigo-600 text-white px-4 py-3 rounded-xl font-bold">Copy Link</button>
+            <button onClick={sharePortfolio} className="glow-btn bg-purple-600 text-white px-4 py-3 rounded-xl font-bold">Share</button>
+            {!publicMode && (
+              <button onClick={() => setActivePage("social")} className="glow-btn bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold">Connections</button>
+            )}
             <button onClick={() => setActivePage("leaderboard")} className="glow-btn bg-orange-500 text-white px-4 py-3 rounded-xl font-bold">Leaderboard</button>
           </div>
         </div>
@@ -5959,7 +5809,7 @@ function PortfolioPage({ isDark, cardClass, user, profile, publicProfile, scoreD
                 </div>
               ))}
             </div>
-          ) : <EmptyState emoji="🏆" title="No achievements yet" message="Complete missions, focus sessions, and study goals to fill your portfolio." />}
+          ) : <EmptyState emoji="🏆" title="No achievements yet" message="Complete missions, focus sessions, and study goals to fill your profile." />}
         </div>
 
         <div className={`${cardClass} p-5 rounded-2xl`}>
@@ -6027,8 +5877,7 @@ function MobileBottomNav({ activePage, setActivePage, isDark }) {
     { id: "feed", label: "Notes", icon: <Rss size={21} /> },
     { id: "opportunities", label: "Opp", icon: <TrendingUp size={21} /> },
     { id: "social", label: "Social", icon: <Users size={21} /> },
-    { id: "portfolio", label: "Portfolio", icon: <GraduationCap size={21} /> },
-    { id: "publicProfile", label: "Profile", icon: <Eye size={21} /> },
+    { id: "portfolio", label: "My Profile", icon: <GraduationCap size={21} /> },
     { id: "leaderboard", label: "Rank", icon: <Trophy size={21} /> },
     { id: "settings", label: "Settings", icon: <Settings size={21} /> },
   ];
