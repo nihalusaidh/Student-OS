@@ -2721,6 +2721,38 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
     }
   };
 
+  if (studyGameStarted && studyGameMode === "archery") {
+    return (
+      <GameRoom
+        mode="archery"
+        questions={studyGameQuestions}
+        topic={studyGameTopic || "Study Topic"}
+        onExit={() => {
+          setStudyGameStarted(false);
+          setStudyGameMode("quiz");
+          setStudyGameFeedback("");
+        }}
+        onReward={({ xp, coins, score, total }) => {
+          setStudyGameScore(score);
+          addXp(xp);
+          setStudyCoins((prev) => prev + coins);
+          unlockAchievement(
+            "study-games-first",
+            "Study Gamer",
+            "🎮",
+            `You completed Archery Arena and earned +${xp} XP.`,
+            "toast"
+          );
+          showToast(
+            "Archery Complete",
+            `Score ${score}/${total}. +${xp} XP · +${coins} coins`,
+            "🏹"
+          );
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`student-os-root min-h-screen flex transition-colors duration-500 overflow-x-hidden ${appBg}`}>
       <Overlays
@@ -6976,29 +7008,19 @@ function StudyGamesPage({
 
     if (studyGameMode === "archery") {
       return (
-        <GameRoom
-          mode="archery"
-          questions={studyGameQuestions}
-          topic={studyGameTopic}
-          onExit={() => setStudyGameStarted(false)}
-          onReward={({ xp, coins, score, total }) => {
-            addXp(xp);
-            setStudyCoins((prev) => prev + coins);
-            setStudyGameScore(score);
-            unlockAchievement(
-              "study-games-first",
-              "Study Gamer",
-              "🎮",
-              `You completed Archery Pro and earned +${xp} XP.`,
-              "toast"
-            );
-            showToast(
-              "Archery Complete",
-              `Score ${score}/${total}. +${xp} XP · +${coins} coins`,
-              "🏹"
-            );
-          }}
-        />
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-4xl md:text-5xl">🏹</p>
+              <p className="font-black mt-1">Real Archery Arena</p>
+            </div>
+            <div className="text-right text-xs md:text-sm opacity-75">
+              <p>Mouse / touch supported</p>
+              <p>Drag backward, aim, release.</p>
+            </div>
+          </div>
+          <RealArcheryArena question={currentQuestion} isDark={isDark} onAnswer={answerStudyGame} />
+        </div>
       );
     }
 
