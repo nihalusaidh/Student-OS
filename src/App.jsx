@@ -77,6 +77,9 @@ function StudentOSApp({ user }) {
       showEmail: false,
       semester: "Semester 3",
       targetAttendance: 75,
+      verified: false,
+      verifiedType: "basic",
+      verificationDate: "",
     };
   });
 
@@ -235,6 +238,9 @@ function StudentOSApp({ user }) {
       showEmail: false,
       semester: "Semester 1",
       targetAttendance: 75,
+      verified: false,
+      verifiedType: "basic",
+      verificationDate: "",
     });
 
     setXp(0);
@@ -720,6 +726,61 @@ function StudentOSApp({ user }) {
 
   const unreadNotificationCount = notifications.filter((item) => !item.read).length;
 
+
+  // -----------------------------
+  // Phase 2: Verified Student System
+  // -----------------------------
+  const verifiedDomains = [
+    "saveetha.ac.in",
+    "saveetha.com",
+    "saveetha.edu.in",
+    "vit.ac.in",
+    "srmist.edu.in",
+    "student.srmist.edu.in",
+    "amrita.edu",
+    "annauniv.edu",
+    "college.edu",
+    "edu.in",
+  ];
+
+  const getVerificationStatus = (emailValue = user?.email || "") => {
+    const email = String(emailValue || "").toLowerCase().trim();
+    const domain = email.includes("@") ? email.split("@").pop() : "";
+    const noteUploads = notes.filter((item) => item.userId === user?.uid).length;
+    const fulfilledRequests = noteRequests.filter((item) => item.fulfilledBy === user?.uid || item.fulfilledByName === profile?.name).length;
+    const isCollegeEmail = Boolean(domain) && verifiedDomains.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`));
+
+    if (noteUploads >= 10 || fulfilledRequests >= 5) {
+      return {
+        verified: true,
+        type: "campus-contributor",
+        label: "Campus Contributor",
+        emoji: "🏆",
+        domain,
+      };
+    }
+
+    if (isCollegeEmail) {
+      return {
+        verified: true,
+        type: "college-email",
+        label: "Verified Student",
+        emoji: "✅",
+        domain,
+      };
+    }
+
+    return {
+      verified: false,
+      type: "basic",
+      label: "Basic Student",
+      emoji: "🟢",
+      domain,
+    };
+  };
+
+  const verificationStatus = getVerificationStatus();
+
   const publishOpportunity = async () => {
     if (!user?.uid) return;
     if (!opportunityTitle.trim() || !opportunityDescription.trim()) {
@@ -738,6 +799,9 @@ function StudentOSApp({ user }) {
       department: profile?.department || profile?.degree || "",
       year: profile?.year || "",
       username: profile?.username || profile?.profileNameKey || "",
+      verified: verificationStatus.verified,
+      verifiedType: verificationStatus.type,
+      verificationLabel: verificationStatus.label,
       type: opportunityType,
       title: opportunityTitle.trim(),
       description: opportunityDescription.trim(),
@@ -1045,7 +1109,13 @@ function StudentOSApp({ user }) {
 
   function getCloudData() {
     return {
-      profile,
+      profile: {
+        ...profile,
+        verified: verificationStatus.verified,
+        verifiedType: verificationStatus.type,
+        verificationLabel: verificationStatus.label,
+        verificationDate: profile?.verificationDate || (verificationStatus.verified ? todayKey : ""),
+      },
       xp,
       completed,
       mood,
@@ -1114,6 +1184,9 @@ function StudentOSApp({ user }) {
       linkedin: profile?.linkedin || "",
       portfolioWebsite: profile?.portfolioWebsite || "",
       showEmail: Boolean(profile?.showEmail),
+      verified: verificationStatus.verified,
+      verifiedType: verificationStatus.type,
+      verificationLabel: verificationStatus.label,
       xp: Number(xp || 0),
       forest: Number(forest || 0),
       focusSessions: Number(forest || 0),
@@ -2120,6 +2193,9 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
       degree: profile?.degree || "",
       department: profile?.department || profile?.degree || "",
       year: profile?.year || "",
+      verified: verificationStatus.verified,
+      verifiedType: verificationStatus.type,
+      verificationLabel: verificationStatus.label,
       subject: requestSubject.trim(),
       unit: requestUnit.trim(),
       message: requestMessage.trim(),
@@ -2213,6 +2289,9 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         degree: profile?.degree || "",
         department: profile?.department || profile?.degree || "",
         year: profile?.year || "",
+        verified: verificationStatus.verified,
+        verifiedType: verificationStatus.type,
+        verificationLabel: verificationStatus.label,
         title: noteTitle.trim(),
         subject: noteSubject.trim(),
         unit: noteUnit.trim(),
@@ -2412,6 +2491,9 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         degree: profile?.degree || "",
         department: profile?.department || profile?.degree || "",
         year: profile?.year || "",
+        verified: verificationStatus.verified,
+        verifiedType: verificationStatus.type,
+        verificationLabel: verificationStatus.label,
         title: `${request.subject || "Notes"} ${request.unit ? `- ${request.unit}` : ""}`.trim(),
         subject: request.subject || "",
         unit: request.unit || "",
@@ -2485,10 +2567,11 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
           <NavItem active={activePage === "notifications"} onClick={() => setActivePage("notifications")} icon={<Bell size={20} />} label={`Notifications${unreadNotificationCount ? ` (${unreadNotificationCount})` : ""}`} navHover={navHover} />
           <NavItem active={activePage === "ai"} onClick={() => setActivePage("ai")} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
-          <NavItem active={activePage === "quest"} onClick={() => setActivePage("quest")} icon={<Target size={20} />} label="Career Quest" navHover={navHover} />
+          <NavItem active={activePage === "quest"} onClick={() => setActivePage("quest")} icon={<Target size={20} />} label="Study RPG" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
           <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
           <NavItem active={activePage === "opportunities"} onClick={() => setActivePage("opportunities")} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
+          <NavItem active={activePage === "verified"} onClick={() => setActivePage("verified")} icon={<CheckCircle2 size={20} />} label="Verified Student" navHover={navHover} />
           <NavItem active={activePage === "social"} onClick={() => setActivePage("social")} icon={<Users size={20} />} label="Students" navHover={navHover} />
           <NavItem active={activePage === "portfolio"} onClick={() => setActivePage("portfolio")} icon={<GraduationCap size={20} />} label="My Profile" navHover={navHover} />
           <NavItem active={activePage === "leaderboard"} onClick={() => setActivePage("leaderboard")} icon={<Trophy size={20} />} label="Leaderboard" navHover={navHover} />
@@ -2539,7 +2622,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
           <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 md:gap-5">
             <div>
               <p className="text-blue-100">{greeting} 👋</p>
-              <h2 className="text-xl sm:text-2xl md:text-4xl font-bold mt-1 leading-tight">Welcome back, {profile.name || "Student"}</h2>
+              <h2 className="text-xl sm:text-2xl md:text-4xl font-bold mt-1 leading-tight flex flex-wrap items-center gap-2">Welcome back, {profile.name || "Student"} <VerifiedBadge status={verificationStatus} /></h2>
               <p className="mt-1 md:mt-2 text-xs sm:text-sm md:text-base text-blue-100">Level {level} · {xp}/{nextLevelXp} XP</p>
               <p className="text-[11px] sm:text-xs md:text-sm text-blue-100 mt-1">{profile.degree || "Student"} · {profile.semester || semesterName} {profile.college ? `· ${profile.college}` : ""}</p>
             </div>
@@ -2924,7 +3007,25 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
                 followStudent={followStudent}
                 setSelectedSocialProfile={setSelectedSocialProfile}
                 leaderboard={leaderboard}
+                profile={profile}
                 user={user}
+              />
+            </PageMotion>
+          )}
+
+          {activePage === "verified" && (
+            <PageMotion key="verified">
+              <VerifiedStudentPage
+                isDark={isDark}
+                cardClass={cardClass}
+                user={user}
+                profile={profile}
+                verificationStatus={verificationStatus}
+                notes={notes}
+                noteRequests={noteRequests}
+                opportunities={opportunities}
+                leaderboard={leaderboard}
+                setActivePage={setActivePage}
               />
             </PageMotion>
           )}
@@ -4027,6 +4128,94 @@ function NavItem({ active, onClick, icon, label, navHover }) {
 
 
 
+
+function VerifiedBadge({ status, small = false }) {
+  if (!status) return null;
+  const isVerified = status.verified;
+  return (
+    <span className={`${small ? "text-[10px] px-2 py-0.5" : "text-xs px-2.5 py-1"} rounded-full font-black inline-flex items-center gap-1 ${isVerified ? "bg-emerald-500/20 text-emerald-100 border border-emerald-300/30" : "bg-white/10 text-slate-200 border border-white/10"}`}>
+      <span>{status.emoji}</span>
+      <span>{status.label}</span>
+    </span>
+  );
+}
+
+function VerifiedStudentPage({ isDark, cardClass, user, profile, verificationStatus, notes, noteRequests, opportunities, leaderboard, setActivePage }) {
+  const myNotes = notes.filter((item) => item.userId === user?.uid);
+  const fulfilled = noteRequests.filter((item) => item.fulfilledBy === user?.uid || item.fulfilledByName === profile?.name);
+  const myOpportunities = opportunities.filter((item) => item.userId === user?.uid);
+  const myRank = leaderboard.findIndex((item) => item.id === user?.uid || item.uid === user?.uid) + 1;
+  const emailDomain = user?.email?.includes("@") ? user.email.split("@").pop() : "Not available";
+
+  return (
+    <section className="mt-5 space-y-5">
+      <div className="relative overflow-hidden rounded-3xl p-5 md:p-6 bg-gradient-to-br from-emerald-950 via-blue-950 to-slate-950 text-white border border-white/10 shadow-2xl">
+        <motion.div animate={{ y: [0, -12, 0], rotate: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 5 }} className="absolute right-8 top-8 text-6xl opacity-20">✅</motion.div>
+        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-emerald-200">Trust Layer</p>
+            <h2 className="text-3xl md:text-4xl font-black mt-1 flex flex-wrap items-center gap-3">
+              Verified Student System <VerifiedBadge status={verificationStatus} />
+            </h2>
+            <p className="text-emerald-100 mt-2 max-w-2xl">Verification increases trust across notes, opportunities, leaderboard, connections, and profiles.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="bg-white/10 border border-white/10 rounded-2xl px-4 py-3"><p className="text-xs text-emerald-100">Email Domain</p><p className="text-sm font-black break-all">{emailDomain}</p></div>
+            <div className="bg-white/10 border border-white/10 rounded-2xl px-4 py-3"><p className="text-xs text-emerald-100">Rank</p><p className="text-xl font-black">{myRank ? `#${myRank}` : "—"}</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <p className="text-3xl">📚</p>
+          <h3 className="text-xl font-black mt-2">Notes Trust</h3>
+          <p className={isDark ? "text-sm text-slate-300 mt-2" : "text-sm text-gray-600 mt-2"}>Your uploads show your verified badge to help students trust your content.</p>
+          <p className="text-3xl font-black mt-3">{myNotes.length}</p>
+          <p className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>Notes uploaded</p>
+        </div>
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <p className="text-3xl">🤝</p>
+          <h3 className="text-xl font-black mt-2">Contributor Level</h3>
+          <p className={isDark ? "text-sm text-slate-300 mt-2" : "text-sm text-gray-600 mt-2"}>Campus Contributor unlocks after meaningful notes help.</p>
+          <p className="text-3xl font-black mt-3">{fulfilled.length}</p>
+          <p className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>Requests fulfilled</p>
+        </div>
+        <div className={`${cardClass} p-5 rounded-2xl`}>
+          <p className="text-3xl">📢</p>
+          <h3 className="text-xl font-black mt-2">Opportunity Trust</h3>
+          <p className={isDark ? "text-sm text-slate-300 mt-2" : "text-sm text-gray-600 mt-2"}>Verified posts stand out in internships, projects, events, and team requests.</p>
+          <p className="text-3xl font-black mt-3">{myOpportunities.length}</p>
+          <p className={isDark ? "text-xs text-slate-400" : "text-xs text-gray-500"}>Opportunities posted</p>
+        </div>
+      </div>
+
+      <div className={`${cardClass} p-5 rounded-2xl space-y-3`}>
+        <h3 className="text-xl font-black">How to become stronger verified</h3>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className={isDark ? "bg-white/5 border border-white/10 p-4 rounded-2xl" : "bg-gray-50 border border-gray-200 p-4 rounded-2xl"}>
+            <p className="font-black">Level 1 · Basic Student</p>
+            <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-600 mt-1"}>Create your account and complete your profile.</p>
+          </div>
+          <div className={isDark ? "bg-white/5 border border-white/10 p-4 rounded-2xl" : "bg-gray-50 border border-gray-200 p-4 rounded-2xl"}>
+            <p className="font-black">Level 2 · Verified Student ✅</p>
+            <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-600 mt-1"}>Use a trusted college email domain.</p>
+          </div>
+          <div className={isDark ? "bg-white/5 border border-white/10 p-4 rounded-2xl" : "bg-gray-50 border border-gray-200 p-4 rounded-2xl"}>
+            <p className="font-black">Level 3 · Campus Contributor 🏆</p>
+            <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-600 mt-1"}>Upload 10 notes or fulfill 5 requests.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <button onClick={() => setActivePage("portfolio")} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold">Complete Profile</button>
+          <button onClick={() => setActivePage("feed")} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold">Upload Notes</button>
+          <button onClick={() => setActivePage("opportunities")} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold">Post Opportunity</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function OpportunitiesPage({
   isDark,
   cardClass,
@@ -4053,9 +4242,10 @@ function OpportunitiesPage({
   followStudent,
   setSelectedSocialProfile,
   leaderboard,
+  profile,
   user,
 }) {
-  const filters = ["All", "Internship", "Project", "Event", "Hackathon", "Team", "Achievement", "Competition"];
+  const filters = ["All", "My College", "My Department", "My Country", "Internship", "Project", "Event", "Hackathon", "Team", "Achievement", "Competition"];
   const typeOptions = ["Internship", "Project", "Event", "Hackathon", "Team", "Achievement", "Competition"];
 
   const typeMeta = {
@@ -4081,6 +4271,9 @@ function OpportunitiesPage({
   };
 
   const filtered = opportunities.filter((item) => {
+    if (opportunityFilter === "My College") return (item.college || "").toLowerCase() === (profile?.college || "").toLowerCase();
+    if (opportunityFilter === "My Department") return (item.department || item.degree || "").toLowerCase() === (profile?.department || profile?.degree || "").toLowerCase();
+    if (opportunityFilter === "My Country") return (item.country || "").toLowerCase() === (profile?.country || "").toLowerCase();
     if (opportunityFilter !== "All" && item.type !== opportunityFilter) return false;
     return true;
   });
@@ -4176,7 +4369,7 @@ function OpportunitiesPage({
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-2 mt-4">
-                  <InfoPill isDark={isDark} icon="👤" text={item.displayName || "Student"} />
+                  <InfoPill isDark={isDark} icon="👤" text={`${item.displayName || "Student"} ${item.verified ? "✅" : ""}`} />
                   <InfoPill isDark={isDark} icon="🏫" text={item.college || "College not set"} />
                   <InfoPill isDark={isDark} icon="🎓" text={item.department || item.degree || "Department"} />
                   <InfoPill isDark={isDark} icon="🌎" text={item.country || "Country"} />
