@@ -194,6 +194,17 @@ function StudentOSApp({ user }) {
   const [bossSelectedAnswer, setBossSelectedAnswer] = useState("");
   const [bossBattleHistory, setBossBattleHistory] = useState(() => JSON.parse(localStorage.getItem("studentOS_bossBattleHistory") || "[]"));
 
+  const [studyCoins, setStudyCoins] = useState(() => Number(localStorage.getItem("studentOS_studyCoins")) || 0);
+  const [studyGameTopic, setStudyGameTopic] = useState("");
+  const [studyGameMode, setStudyGameMode] = useState("quiz");
+  const [studyGameQuestions, setStudyGameQuestions] = useState(() => JSON.parse(localStorage.getItem("studentOS_studyGameQuestions") || "[]"));
+  const [studyGameCurrent, setStudyGameCurrent] = useState(() => Number(localStorage.getItem("studentOS_studyGameCurrent")) || 0);
+  const [studyGameScore, setStudyGameScore] = useState(() => Number(localStorage.getItem("studentOS_studyGameScore")) || 0);
+  const [studyGameStarted, setStudyGameStarted] = useState(false);
+  const [studyGameFeedback, setStudyGameFeedback] = useState("");
+  const [studyGameTimer, setStudyGameTimer] = useState(20);
+  const [fishHealth, setFishHealth] = useState(100);
+
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesStatus, setOpportunitiesStatus] = useState("loading");
   const [opportunityFilter, setOpportunityFilter] = useState("All");
@@ -348,6 +359,10 @@ function StudentOSApp({ user }) {
   useEffect(() => localStorage.setItem("studentOS_dailyMissionData", JSON.stringify(dailyMissionData)), [dailyMissionData]);
   useEffect(() => localStorage.setItem("studentOS_bossBattle", JSON.stringify(bossBattle)), [bossBattle]);
   useEffect(() => localStorage.setItem("studentOS_bossBattleHistory", JSON.stringify(bossBattleHistory)), [bossBattleHistory]);
+  useEffect(() => localStorage.setItem("studentOS_studyCoins", studyCoins), [studyCoins]);
+  useEffect(() => localStorage.setItem("studentOS_studyGameQuestions", JSON.stringify(studyGameQuestions)), [studyGameQuestions]);
+  useEffect(() => localStorage.setItem("studentOS_studyGameCurrent", studyGameCurrent), [studyGameCurrent]);
+  useEffect(() => localStorage.setItem("studentOS_studyGameScore", studyGameScore), [studyGameScore]);
 
   useEffect(() => {
     if (dailyMissionData?.date === todayKey) return;
@@ -459,6 +474,7 @@ function StudentOSApp({ user }) {
     calendarEvents,
     dailyMissionData,
     bossBattleHistory,
+    studyCoins,
   ]);
 
   useEffect(() => {
@@ -1136,6 +1152,7 @@ function StudentOSApp({ user }) {
       calendarEvents,
       dailyMissionData,
       bossBattleHistory,
+      studyCoins,
       theme,
       updatedAt: serverTimestamp(),
       userEmail: user?.email || "",
@@ -1463,6 +1480,126 @@ function StudentOSApp({ user }) {
     setBossSelectedAnswer("");
     showToast(isCorrect ? "Correct Hit" : "Missed", isCorrect ? "Boss HP reduced by 20." : "No damage. Learn and continue.", isCorrect ? "⚔️" : "🛡️");
   };
+
+
+  const buildStudyGameQuestions = (topicValue) => {
+    const topic = String(topicValue || "General Knowledge").trim() || "General Knowledge";
+    const normalized = topic.toLowerCase();
+
+    const bank = [
+      { question: `One word: main concept of ${topic}?`, answer: "Core", options: ["Core", "Color", "Size", "Noise"] },
+      { question: `Best action to master ${topic}?`, answer: "Practice", options: ["Practice", "Skip", "Guess", "Forget"] },
+      { question: `After studying ${topic}, do a?`, answer: "Quiz", options: ["Quiz", "Nap", "Scroll", "Skip"] },
+      { question: `Useful revision item for ${topic}?`, answer: "Notes", options: ["Notes", "Noise", "Delay", "Luck"] },
+      { question: `Learning improves with?`, answer: "Focus", options: ["Focus", "Fear", "Rush", "Copy"] },
+      { question: `Exam success needs?`, answer: "Revision", options: ["Revision", "Panic", "Delay", "Guess"] },
+      { question: `Weak topic needs more?`, answer: "Practice", options: ["Practice", "Ignore", "Skip", "Sleep"] },
+      { question: `Correct answer gives?`, answer: "XP", options: ["XP", "Loss", "Spam", "Risk"] },
+    ];
+
+    if (normalized.includes("gate") || normalized.includes("digital") || normalized.includes("logic")) {
+      return [
+        { question: "Both inputs 1 gives output 1?", answer: "AND", options: ["AND", "OR", "NOT", "XOR"] },
+        { question: "Either input 1 gives output 1?", answer: "OR", options: ["AND", "OR", "NOT", "NAND"] },
+        { question: "Opposite output gate?", answer: "NOT", options: ["NOT", "AND", "OR", "XOR"] },
+        { question: "Universal gate?", answer: "NAND", options: ["NAND", "OR", "XOR", "AND"] },
+        { question: "Exclusive OR short form?", answer: "XOR", options: ["XOR", "AND", "NOR", "NOT"] },
+        ...bank.slice(0, 5),
+      ];
+    }
+
+    if (normalized.includes("c programming") || normalized === "c" || normalized.includes("pointer")) {
+      return [
+        { question: "Address storing variable?", answer: "Pointer", options: ["Pointer", "Array", "Loop", "String"] },
+        { question: "Text datatype in C?", answer: "char", options: ["char", "float", "int", "void"] },
+        { question: "Repeating statement?", answer: "Loop", options: ["Loop", "Array", "Struct", "File"] },
+        { question: "Collection of same type?", answer: "Array", options: ["Array", "Pointer", "If", "Void"] },
+        { question: "Function output keyword?", answer: "return", options: ["return", "break", "case", "else"] },
+        ...bank.slice(0, 5),
+      ];
+    }
+
+    if (normalized.includes("electronics") || normalized.includes("transistor")) {
+      return [
+        { question: "Amplification device?", answer: "Transistor", options: ["Transistor", "Resistor", "Capacitor", "Diode"] },
+        { question: "Opposes current?", answer: "Resistor", options: ["Resistor", "Inductor", "Battery", "Switch"] },
+        { question: "Stores charge?", answer: "Capacitor", options: ["Capacitor", "Diode", "LED", "Relay"] },
+        { question: "Allows one direction?", answer: "Diode", options: ["Diode", "Resistor", "Fuse", "Coil"] },
+        { question: "Unit of resistance?", answer: "Ohm", options: ["Ohm", "Volt", "Watt", "Tesla"] },
+        ...bank.slice(0, 5),
+      ];
+    }
+
+    return bank;
+  };
+
+  const startStudyGame = (mode = studyGameMode) => {
+    const topic = studyGameTopic.trim() || weakestInternalSubject?.name || lowestAttendanceItem?.subject || "Exam Revision";
+    const generated = buildStudyGameQuestions(topic).slice(0, 10);
+    setStudyGameMode(mode);
+    setStudyGameTopic(topic);
+    setStudyGameQuestions(generated);
+    setStudyGameCurrent(0);
+    setStudyGameScore(0);
+    setStudyGameFeedback("");
+    setStudyGameTimer(mode === "fish" ? 20 : 30);
+    setFishHealth(100);
+    setStudyGameStarted(true);
+    showToast("Study Game Started", `${topic} · ${mode === "fish" ? "Fish Feeding" : mode === "parking" ? "Smart Parking" : mode === "archery" ? "Archery" : mode === "blast" ? "Target Blast" : "Quiz Arena"}`, "🎮");
+  };
+
+  const finishStudyGame = (reason = "completed") => {
+    const bonus = Math.max(10, studyGameScore * 10);
+    const coinBonus = Math.max(5, studyGameScore * 3);
+    setStudyGameStarted(false);
+    addXp(bonus);
+    setStudyCoins((prev) => prev + coinBonus);
+    unlockAchievement("study-games-first", "Study Gamer", "🎮", `You completed a Study Games round and earned +${bonus} XP.`, "toast");
+    showToast(reason === "health" ? "Fish Needs Rest" : "Game Complete", `Score ${studyGameScore}/${studyGameQuestions.length}. +${bonus} XP · +${coinBonus} coins`, reason === "health" ? "🐟" : "🏆");
+  };
+
+  const answerStudyGame = (option) => {
+    if (!studyGameStarted || !studyGameQuestions.length) return;
+    const currentQuestion = studyGameQuestions[studyGameCurrent];
+    const correct = option === currentQuestion.answer;
+
+    if (correct) {
+      setStudyGameScore((prev) => prev + 1);
+      setStudyGameFeedback("correct");
+      if (studyGameMode === "fish") setStudyGameTimer((prev) => Math.min(30, prev + 5));
+      setStudyCoins((prev) => prev + 1);
+    } else {
+      setStudyGameFeedback("wrong");
+      if (studyGameMode === "fish") setFishHealth((prev) => Math.max(0, prev - 15));
+    }
+
+    setTimeout(() => {
+      setStudyGameFeedback("");
+      if (studyGameCurrent + 1 >= studyGameQuestions.length) finishStudyGame("completed");
+      else setStudyGameCurrent((prev) => prev + 1);
+    }, 650);
+  };
+
+  useEffect(() => {
+    if (!studyGameStarted || studyGameMode !== "fish") return;
+    if (fishHealth <= 0) {
+      finishStudyGame("health");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setStudyGameTimer((prev) => {
+        if (prev <= 1) {
+          setFishHealth((health) => Math.max(0, health - 10));
+          return 20;
+        }
+        return prev - 1;
+      });
+      setFishHealth((health) => Math.max(0, health - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [studyGameStarted, studyGameMode, fishHealth]);
 
   const attendanceAverage = attendanceItems.length
     ? Math.round(attendanceItems.reduce((sum, item) => sum + getAttendancePercent(item), 0) / attendanceItems.length)
@@ -2164,6 +2301,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
       calendarEvents,
       dailyMissionData,
       bossBattleHistory,
+      studyCoins,
       theme,
       exportedAt: new Date().toISOString(),
     };
@@ -2622,6 +2760,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
           <NavItem active={activePage === "ai"} onClick={() => setActivePage("ai")} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
           <NavItem active={activePage === "quest"} onClick={() => setActivePage("quest")} icon={<Target size={20} />} label="Study RPG" navHover={navHover} />
+          <NavItem active={activePage === "games"} onClick={() => setActivePage("games")} icon={<Sparkles size={20} />} label="Study Games" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
           <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
           <NavItem active={activePage === "opportunities"} onClick={() => setActivePage("opportunities")} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
@@ -2682,6 +2821,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
                 <NavItem active={activePage === "ai"} onClick={() => { setActivePage("ai"); setMobileMenuOpen(false); }} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
                 <NavItem active={activePage === "achievements"} onClick={() => { setActivePage("achievements"); setMobileMenuOpen(false); }} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
                 <NavItem active={activePage === "quest"} onClick={() => { setActivePage("quest"); setMobileMenuOpen(false); }} icon={<Target size={20} />} label="Study RPG" navHover={navHover} />
+                <NavItem active={activePage === "games"} onClick={() => { setActivePage("games"); setMobileMenuOpen(false); }} icon={<Sparkles size={20} />} label="Study Games" navHover={navHover} />
                 <NavItem active={activePage === "analytics"} onClick={() => { setActivePage("analytics"); setMobileMenuOpen(false); }} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
                 <NavItem active={activePage === "feed"} onClick={() => { setActivePage("feed"); setMobileMenuOpen(false); }} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
                 <NavItem active={activePage === "opportunities"} onClick={() => { setActivePage("opportunities"); setMobileMenuOpen(false); }} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
@@ -2758,7 +2898,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
         </motion.section>
 
         <div className="hidden">
-          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "notifications", "ai", "achievements", "quest", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
+          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "notifications", "ai", "achievements", "quest", "games", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
             <button
               key={page}
               onClick={() => setActivePage(page)}
@@ -3028,6 +3168,31 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
                 bossBattleHistory={bossBattleHistory}
                 achievements={achievements}
                 allAchievements={allAchievements}
+              />
+            </PageMotion>
+          )}
+
+          {activePage === "games" && (
+            <PageMotion key="games">
+              <StudyGamesPage
+                isDark={isDark}
+                cardClass={cardClass}
+                inputClass={inputClass}
+                studyCoins={studyCoins}
+                studyGameTopic={studyGameTopic}
+                setStudyGameTopic={setStudyGameTopic}
+                studyGameMode={studyGameMode}
+                setStudyGameMode={setStudyGameMode}
+                studyGameQuestions={studyGameQuestions}
+                studyGameCurrent={studyGameCurrent}
+                studyGameScore={studyGameScore}
+                studyGameStarted={studyGameStarted}
+                studyGameFeedback={studyGameFeedback}
+                studyGameTimer={studyGameTimer}
+                fishHealth={fishHealth}
+                startStudyGame={startStudyGame}
+                answerStudyGame={answerStudyGame}
+                finishStudyGame={finishStudyGame}
               />
             </PageMotion>
           )}
@@ -6428,6 +6593,203 @@ function MobileBottomNav({ activePage, setActivePage, isDark }) {
             <span className="sr-only">{item.label}</span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+
+function StudyGamesPage({
+  isDark,
+  cardClass,
+  inputClass,
+  studyCoins,
+  studyGameTopic,
+  setStudyGameTopic,
+  studyGameMode,
+  setStudyGameMode,
+  studyGameQuestions,
+  studyGameCurrent,
+  studyGameScore,
+  studyGameStarted,
+  studyGameFeedback,
+  studyGameTimer,
+  fishHealth,
+  startStudyGame,
+  answerStudyGame,
+  finishStudyGame,
+}) {
+  const currentQuestion = studyGameQuestions[studyGameCurrent];
+  const modes = [
+    { id: "quiz", title: "Quiz Arena", emoji: "🎯", desc: "Fast one-word revision quiz." },
+    { id: "fish", title: "Fish Feeding", emoji: "🐟", desc: "Feed the fish the correct answer before health drops." },
+    { id: "boss", title: "Boss Battle Pro", emoji: "⚔️", desc: "Correct answers damage the topic boss." },
+    { id: "archery", title: "Archery", emoji: "🏹", desc: "Shoot the correct answer target." },
+    { id: "parking", title: "Smart Parking", emoji: "🚗", desc: "Park in the right answer zone while avoiding distractions." },
+    { id: "blast", title: "Target Blast", emoji: "💥", desc: "Tap the correct moving target quickly." },
+  ];
+
+  const modeLabel = modes.find((mode) => mode.id === studyGameMode) || modes[0];
+  const arenaBg = isDark ? "bg-slate-950/70 border-white/10" : "bg-blue-50 border-blue-100";
+  const answerBase = isDark ? "bg-white/10 border-white/10 hover:bg-white/20" : "bg-white border-gray-200 hover:bg-blue-50";
+
+  const renderModeArena = () => {
+    if (!currentQuestion) {
+      return <EmptyState isDark={isDark}>Start a game to generate quick one-word questions.</EmptyState>;
+    }
+
+    if (studyGameMode === "fish") {
+      return (
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-5xl md:text-7xl">🐟</p>
+              <p className="font-black mt-2">Fish Health: {fishHealth}%</p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-black text-blue-500">{studyGameTimer}s</p>
+              <p className="text-xs opacity-70">Correct pellet adds +5s</p>
+            </div>
+          </div>
+          <div className="h-3 rounded-full bg-red-200 overflow-hidden mb-4">
+            <motion.div className="h-full bg-green-500" animate={{ width: `${fishHealth}%` }} />
+          </div>
+          <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {currentQuestion.options.map((option) => (
+              <motion.button
+                key={option}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.94 }}
+                onClick={() => answerStudyGame(option)}
+                className={`rounded-full p-4 text-center font-black border ${answerBase}`}
+              >
+                <div className="text-2xl mb-1">🟡</div>
+                {option}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (studyGameMode === "parking") {
+      return (
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-5xl">🚗</p>
+            <div className="text-right"><p className="font-black">Avoid distractions</p><p className="text-xs opacity-70">Park only in the correct answer slot.</p></div>
+          </div>
+          <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
+          <div className="grid grid-cols-2 gap-3">
+            {currentQuestion.options.map((option, index) => (
+              <button key={option} onClick={() => answerStudyGame(option)} className={`min-h-[92px] rounded-2xl border p-3 font-black ${answerBase}`}>
+                <div className="text-2xl">{index % 2 === 0 ? "🅿️" : "🚧"}</div>
+                <div>{option}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (studyGameMode === "archery" || studyGameMode === "blast") {
+      return (
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-5xl">{studyGameMode === "archery" ? "🏹" : "💥"}</p>
+            <p className="text-xs md:text-sm opacity-70">Tap the correct answer target.</p>
+          </div>
+          <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {currentQuestion.options.map((option) => (
+              <motion.button
+                key={option}
+                animate={studyGameMode === "blast" ? { y: [0, -8, 0] } : {}}
+                transition={{ repeat: Infinity, duration: 1.7 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => answerStudyGame(option)}
+                className={`aspect-square rounded-full border p-3 flex items-center justify-center text-center font-black ${answerBase}`}
+              >
+                <span>{option}</span>
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (studyGameMode === "boss") {
+      const bossHp = Math.max(0, 100 - studyGameScore * 20);
+      return (
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div><p className="text-6xl">🐉</p><p className="font-black">Boss HP: {bossHp}</p></div>
+            <div className="text-right"><p className="font-black">Correct = -20 HP</p><p className="text-xs opacity-70">Wrong answer blocks your attack.</p></div>
+          </div>
+          <div className="h-3 rounded-full bg-red-200 overflow-hidden mb-4"><motion.div className="h-full bg-red-500" animate={{ width: `${bossHp}%` }} /></div>
+          <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
+          <div className="grid grid-cols-2 gap-3">
+            {currentQuestion.options.map((option) => <button key={option} onClick={() => answerStudyGame(option)} className={`rounded-2xl border p-4 font-black ${answerBase}`}>⚔️ {option}</button>)}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+        <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {currentQuestion.options.map((option) => <button key={option} onClick={() => answerStudyGame(option)} className={`rounded-2xl border p-4 font-black text-left ${answerBase}`}>🎯 {option}</button>)}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <p className="text-sm text-blue-500 font-black">Student OS V3</p>
+          <h2 className="text-2xl md:text-4xl font-black">🎮 Study Games OS</h2>
+          <p className={isDark ? "text-slate-300 mt-1" : "text-gray-600 mt-1"}>Turn one-word revision into Quiz, Fish, Boss, Archery, Parking and Target Blast games.</p>
+        </div>
+        <div className={isDark ? "bg-yellow-400/10 border border-yellow-300/20 rounded-2xl px-4 py-3" : "bg-yellow-50 border border-yellow-200 rounded-2xl px-4 py-3"}>
+          <p className="text-xs font-bold text-yellow-600">Study Coins</p>
+          <p className="text-2xl font-black">🪙 {studyCoins}</p>
+        </div>
+      </div>
+
+      <div className={`${cardClass} rounded-3xl p-4 md:p-6 space-y-4`}>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+          <input className={inputClass} value={studyGameTopic} onChange={(e) => setStudyGameTopic(e.target.value)} placeholder="Enter topic: Digital Electronics, C pointers, transistor, DSP..." />
+          <button onClick={() => startStudyGame(studyGameMode)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 py-3 font-black">Start Game</button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+          {modes.map((mode) => (
+            <button key={mode.id} onClick={() => setStudyGameMode(mode.id)} className={`rounded-2xl p-3 text-left border transition ${studyGameMode === mode.id ? "bg-blue-600 text-white border-blue-500" : answerBase}`}>
+              <div className="text-2xl">{mode.emoji}</div>
+              <p className="font-black text-sm">{mode.title}</p>
+              <p className="text-[11px] opacity-75 mt-1 hidden md:block">{mode.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={`${cardClass} rounded-3xl p-4 md:p-6`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-xl font-black">{modeLabel.emoji} {modeLabel.title}</h3>
+            <p className="text-sm opacity-70">Question {studyGameQuestions.length ? studyGameCurrent + 1 : 0}/{studyGameQuestions.length || 0} · Score {studyGameScore}</p>
+          </div>
+          {studyGameStarted && <button onClick={() => finishStudyGame("completed")} className="rounded-xl px-4 py-2 bg-red-500 text-white font-bold text-sm">End</button>}
+        </div>
+        {studyGameFeedback && (
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`mb-4 rounded-2xl p-3 font-black ${studyGameFeedback === "correct" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+            {studyGameFeedback === "correct" ? "✅ Correct! +time/+coins" : "❌ Wrong! Think once more next time"}
+          </motion.div>
+        )}
+        {renderModeArena()}
       </div>
     </div>
   );
