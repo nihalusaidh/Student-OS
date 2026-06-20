@@ -2859,6 +2859,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
                 notesStatus={notesStatus}
                 notesTab={notesTab}
                 setNotesTab={setNotesTab}
+                profile={profile}
                 noteSearch={noteSearch}
                 setNoteSearch={setNoteSearch}
                 requestSubject={requestSubject}
@@ -4599,6 +4600,7 @@ function NotesHubPage({
   notesStatus,
   notesTab,
   setNotesTab,
+  profile,
   noteSearch,
   setNoteSearch,
   requestSubject,
@@ -4638,6 +4640,20 @@ function NotesHubPage({
   const myNotes = notes.filter((note) => note.userId === user?.uid);
   const myRequests = noteRequests.filter((request) => request.userId === user?.uid);
 
+  const [libraryCollege, setLibraryCollege] = useState("");
+  const [libraryDepartment, setLibraryDepartment] = useState("");
+  const [librarySubject, setLibrarySubject] = useState("");
+  const [libraryTopic, setLibraryTopic] = useState("");
+
+  const uniqueNoteValues = (field) =>
+    [...new Set(notes.map((note) => String(note?.[field] || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+  const libraryColleges = uniqueNoteValues("college");
+  const libraryDepartments = uniqueNoteValues("department");
+  const librarySubjects = uniqueNoteValues("subject");
+
+  const includesText = (value, target) => String(value || "").toLowerCase().includes(String(target || "").toLowerCase());
+
   const filteredNotes = notes.filter((note) => {
     if (!search) return true;
     return [note.title, note.subject, note.unit, note.description, note.displayName, note.college]
@@ -4646,6 +4662,23 @@ function NotesHubPage({
       .toLowerCase()
       .includes(search);
   });
+
+  const libraryNotes = filteredNotes.filter((note) => {
+    const collegeOk = !libraryCollege || note.college === libraryCollege;
+    const departmentOk = !libraryDepartment || (note.department || note.degree || "") === libraryDepartment;
+    const subjectOk = !librarySubject || note.subject === librarySubject;
+    const topicOk = !libraryTopic || [note.title, note.subject, note.unit, note.description, note.college, note.department, note.displayName]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(libraryTopic.toLowerCase());
+    return collegeOk && departmentOk && subjectOk && topicOk;
+  });
+
+  const myCollegeNotes = notes.filter((note) => profile?.college && note.college === profile.college);
+  const myDepartmentNotes = notes.filter((note) => profile?.department && (note.department || note.degree || "") === profile.department);
+  const mostDownloadedNotes = [...notes].sort((a, b) => Number(b.downloads || 0) - Number(a.downloads || 0)).slice(0, 4);
+  const recentLibraryNotes = [...notes].slice(0, 4);
 
   const filteredRequests = openRequests.filter((request) => {
     if (!search) return true;
@@ -4692,6 +4725,7 @@ function NotesHubPage({
       <div className={`${cardClass} p-4 rounded-2xl space-y-4`}>
         <div className="flex flex-wrap gap-2">
           {tabButton("browse", "🔍 Browse Notes")}
+          {tabButton("library", "📚 Notes Library")}
           {tabButton("request", "📢 Request Notes")}
           {tabButton("upload", "📄 Upload Notes")}
           {tabButton("requests", "✅ Help Requests")}
@@ -4830,6 +4864,31 @@ function NotesHubPage({
           <p className="text-4xl">⏳</p>
           <p className="font-bold mt-3">Loading Notes Hub...</p>
         </div>
+      ) : notesTab === "library" ? (
+        <NotesLibraryView
+          isDark={isDark}
+          cardClass={cardClass}
+          inputClass={inputClass}
+          profile={profile}
+          notes={notes}
+          libraryNotes={libraryNotes}
+          libraryCollege={libraryCollege}
+          setLibraryCollege={setLibraryCollege}
+          libraryDepartment={libraryDepartment}
+          setLibraryDepartment={setLibraryDepartment}
+          librarySubject={librarySubject}
+          setLibrarySubject={setLibrarySubject}
+          libraryTopic={libraryTopic}
+          setLibraryTopic={setLibraryTopic}
+          libraryColleges={libraryColleges}
+          libraryDepartments={libraryDepartments}
+          librarySubjects={librarySubjects}
+          myCollegeNotes={myCollegeNotes}
+          myDepartmentNotes={myDepartmentNotes}
+          mostDownloadedNotes={mostDownloadedNotes}
+          recentLibraryNotes={recentLibraryNotes}
+          downloadNote={downloadNote}
+        />
       ) : notesTab === "requests" ? (
         filteredRequests.length === 0 ? (
           <EmptyNotes cardClass={cardClass} emoji="✅" title="No open requests" message="When students ask for notes, their requests will appear here." />
@@ -4852,6 +4911,160 @@ function NotesHubPage({
         )
       ) : null}
     </section>
+  );
+}
+
+
+function NotesLibraryView({
+  isDark,
+  cardClass,
+  inputClass,
+  profile,
+  notes,
+  libraryNotes,
+  libraryCollege,
+  setLibraryCollege,
+  libraryDepartment,
+  setLibraryDepartment,
+  librarySubject,
+  setLibrarySubject,
+  libraryTopic,
+  setLibraryTopic,
+  libraryColleges,
+  libraryDepartments,
+  librarySubjects,
+  myCollegeNotes,
+  myDepartmentNotes,
+  mostDownloadedNotes,
+  recentLibraryNotes,
+  downloadNote,
+}) {
+  const quickFilterClass = isDark
+    ? "bg-white/10 hover:bg-white/20 border border-white/10 text-white px-4 py-2 rounded-xl font-bold text-sm"
+    : "bg-white hover:bg-gray-50 border border-gray-200 text-gray-800 px-4 py-2 rounded-xl font-bold text-sm shadow-sm";
+
+  const clearLibraryFilters = () => {
+    setLibraryCollege("");
+    setLibraryDepartment("");
+    setLibrarySubject("");
+    setLibraryTopic("");
+  };
+
+  const applyMyCollege = () => {
+    setLibraryCollege(profile?.college || "");
+  };
+
+  const applyMyDepartment = () => {
+    setLibraryDepartment(profile?.department || profile?.degree || "");
+  };
+
+  const statCards = [
+    { label: "All Notes", value: notes.length, emoji: "📚" },
+    { label: "My College", value: myCollegeNotes.length, emoji: "🏫" },
+    { label: "My Department", value: myDepartmentNotes.length, emoji: "🎓" },
+    { label: "Results", value: libraryNotes.length, emoji: "🔎" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 rounded-3xl shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-blue-100">Smart Notes Library</p>
+            <h3 className="text-2xl md:text-3xl font-black mt-1">Find notes by college, department and subject</h3>
+            <p className="text-sm text-blue-100 mt-2 max-w-2xl">
+              No fixed unit system. Every college can have different syllabus, so students can search by subject, topic, unit, module, chapter, or keywords.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {statCards.map((item) => (
+              <div key={item.label} className="bg-white/10 border border-white/10 rounded-2xl p-3 min-w-24">
+                <p className="text-xs text-blue-100">{item.emoji} {item.label}</p>
+                <p className="text-2xl font-black">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${cardClass} p-5 rounded-2xl`}>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button onClick={applyMyCollege} className={quickFilterClass}>🏫 My College</button>
+          <button onClick={applyMyDepartment} className={quickFilterClass}>🎓 My Department</button>
+          <button onClick={clearLibraryFilters} className={quickFilterClass}>✖ Clear Filters</button>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-3">
+          <select value={libraryCollege} onChange={(event) => setLibraryCollege(event.target.value)} className={inputClass}>
+            <option value="">All Colleges</option>
+            {libraryColleges.map((college) => <option key={college} value={college}>{college}</option>)}
+          </select>
+
+          <select value={libraryDepartment} onChange={(event) => setLibraryDepartment(event.target.value)} className={inputClass}>
+            <option value="">All Departments</option>
+            {libraryDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+          </select>
+
+          <select value={librarySubject} onChange={(event) => setLibrarySubject(event.target.value)} className={inputClass}>
+            <option value="">All Subjects</option>
+            {librarySubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+          </select>
+
+          <input
+            value={libraryTopic}
+            onChange={(event) => setLibraryTopic(event.target.value)}
+            placeholder="Topic / Unit / Module / Keyword"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-4 text-xs">
+          {libraryCollege && <span className="bg-blue-600 text-white px-3 py-1 rounded-full font-bold">College: {libraryCollege}</span>}
+          {libraryDepartment && <span className="bg-indigo-600 text-white px-3 py-1 rounded-full font-bold">Department: {libraryDepartment}</span>}
+          {librarySubject && <span className="bg-green-600 text-white px-3 py-1 rounded-full font-bold">Subject: {librarySubject}</span>}
+          {libraryTopic && <span className="bg-orange-500 text-white px-3 py-1 rounded-full font-bold">Search: {libraryTopic}</span>}
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5">
+        <LibraryMiniList title="⭐ Most Downloaded" notes={mostDownloadedNotes} isDark={isDark} downloadNote={downloadNote} />
+        <LibraryMiniList title="🆕 Recently Added" notes={recentLibraryNotes} isDark={isDark} downloadNote={downloadNote} />
+      </div>
+
+      {libraryNotes.length === 0 ? (
+        <EmptyNotes cardClass={cardClass} emoji="🔎" title="No notes found" message="Try another college, department, subject, or topic keyword. If notes are missing, request them in Notes Hub." />
+      ) : (
+        <div className="grid lg:grid-cols-2 gap-4">
+          {libraryNotes.map((note) => (
+            <NoteCard key={note.id} note={note} isDark={isDark} downloadNote={downloadNote} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LibraryMiniList({ title, notes, isDark, downloadNote }) {
+  return (
+    <div className={isDark ? "bg-white/10 border border-white/10 rounded-2xl p-5" : "bg-white border border-gray-200 rounded-2xl p-5 shadow"}>
+      <h3 className="font-black text-lg mb-3">{title}</h3>
+      {notes.length === 0 ? (
+        <p className="text-sm text-gray-500">No notes yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {notes.map((note) => (
+            <button
+              key={note.id}
+              onClick={() => downloadNote(note)}
+              className={isDark ? "w-full text-left bg-white/5 hover:bg-white/10 rounded-xl p-3 transition" : "w-full text-left bg-gray-50 hover:bg-gray-100 rounded-xl p-3 transition"}
+            >
+              <p className="font-bold truncate">{note.title || "Untitled Notes"}</p>
+              <p className="text-xs text-gray-500 mt-1">{note.subject || "Subject"} · {note.college || "College"} · {note.downloads || 0} downloads</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
