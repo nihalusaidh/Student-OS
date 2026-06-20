@@ -19,6 +19,7 @@ import { supabase } from "./supabase";
 import Login from "./pages/Login";
 import Phaser from "phaser";
 import { motion, AnimatePresence } from "framer-motion";
+import ArcheryGame from "./components/games/ArcheryGame";
 import {
   Flame,
   Target,
