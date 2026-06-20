@@ -174,6 +174,21 @@ function StudentOSApp({ user }) {
   const [notifications, setNotifications] = useState([]);
   const [notificationsStatus, setNotificationsStatus] = useState("loading");
 
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const [dailyMissionData, setDailyMissionData] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem("studentOS_dailyMissionData") || "null");
+    if (saved?.date === new Date().toISOString().slice(0, 10)) return saved;
+    return {
+      date: new Date().toISOString().slice(0, 10),
+      completed: { login: true },
+      bonusClaimed: false,
+    };
+  });
+  const [bossTopic, setBossTopic] = useState("");
+  const [bossBattle, setBossBattle] = useState(() => JSON.parse(localStorage.getItem("studentOS_bossBattle") || "null"));
+  const [bossSelectedAnswer, setBossSelectedAnswer] = useState("");
+  const [bossBattleHistory, setBossBattleHistory] = useState(() => JSON.parse(localStorage.getItem("studentOS_bossBattleHistory") || "[]"));
+
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesStatus, setOpportunitiesStatus] = useState("loading");
   const [opportunityFilter, setOpportunityFilter] = useState("All");
@@ -321,6 +336,14 @@ function StudentOSApp({ user }) {
   useEffect(() => localStorage.setItem("studentOS_calendarEvents", JSON.stringify(calendarEvents)), [calendarEvents]);
   useEffect(() => localStorage.setItem("studentOS_followingIds", JSON.stringify(followingIds)), [followingIds]);
   useEffect(() => localStorage.setItem("studentOS_connectedStudents", JSON.stringify(connectedStudents)), [connectedStudents]);
+  useEffect(() => localStorage.setItem("studentOS_dailyMissionData", JSON.stringify(dailyMissionData)), [dailyMissionData]);
+  useEffect(() => localStorage.setItem("studentOS_bossBattle", JSON.stringify(bossBattle)), [bossBattle]);
+  useEffect(() => localStorage.setItem("studentOS_bossBattleHistory", JSON.stringify(bossBattleHistory)), [bossBattleHistory]);
+
+  useEffect(() => {
+    if (dailyMissionData?.date === todayKey) return;
+    setDailyMissionData({ date: todayKey, completed: { login: true }, bonusClaimed: false });
+  }, [todayKey, dailyMissionData?.date]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -365,6 +388,8 @@ function StudentOSApp({ user }) {
           if (typeof data.semesterCredits === "number") setSemesterCredits(data.semesterCredits);
           if (Array.isArray(data.calendarEvents)) setCalendarEvents(data.calendarEvents);
           if (typeof data.theme === "string") setTheme(data.theme);
+          if (data.dailyMissionData?.date === todayKey) setDailyMissionData(data.dailyMissionData);
+          if (Array.isArray(data.bossBattleHistory)) setBossBattleHistory(data.bossBattleHistory);
         } else {
           await setDoc(ref, getCloudData(), { merge: true });
         }
@@ -423,6 +448,8 @@ function StudentOSApp({ user }) {
     currentGpa,
     semesterCredits,
     calendarEvents,
+    dailyMissionData,
+    bossBattleHistory,
   ]);
 
   useEffect(() => {
@@ -730,6 +757,8 @@ function StudentOSApp({ user }) {
       setOpportunityDate("");
       setOpportunityLocation("");
       addXp(15);
+      completeDailyMission("askAI", 0, false);
+      unlockAchievement("first-opportunity", "Opportunity Creator", "📢", "You posted your first student opportunity.", "toast");
       showToast("Opportunity Posted", "+15 XP. Your post can help other students.", "📢");
     } catch (error) {
       console.error("Publish opportunity error:", error);
@@ -1032,6 +1061,8 @@ function StudentOSApp({ user }) {
       currentGpa,
       semesterCredits,
       calendarEvents,
+      dailyMissionData,
+      bossBattleHistory,
       theme,
       updatedAt: serverTimestamp(),
       userEmail: user?.email || "",
@@ -1185,15 +1216,24 @@ function StudentOSApp({ user }) {
   const allAchievements = [
     { id: "daily-checkin", title: "Check-In", emoji: "🔥" },
     { id: "first-mission", title: "Mission", emoji: "🏅" },
-    { id: "first-tree", title: "Tree", emoji: "🌱" },
+    { id: "first-tree", title: "Focus Starter", emoji: "🌱" },
     { id: "1000-xp", title: "1000 XP", emoji: "⭐" },
-    { id: "forest-unlocked", title: "Forest", emoji: "🌳" },
+    { id: "forest-unlocked", title: "Focus Forest", emoji: "🌳" },
     { id: "7-day-streak", title: "7 Days", emoji: "🔥" },
     { id: "30-day-streak", title: "30 Days", emoji: "🏆" },
     { id: "first-reminder", title: "Reminder", emoji: "🔔" },
     { id: "first-attendance", title: "Attendance", emoji: "📊" },
     { id: "first-internal", title: "Internals", emoji: "📝" },
     { id: "first-calendar", title: "Calendar", emoji: "📅" },
+    { id: "daily-mission", title: "Daily Mission", emoji: "🎯" },
+    { id: "daily-champion", title: "Daily Champion", emoji: "🥇" },
+    { id: "first-note", title: "First Note Upload", emoji: "📚" },
+    { id: "notes-hero", title: "Notes Hero", emoji: "📘" },
+    { id: "first-boss", title: "First Boss Defeated", emoji: "⚔️" },
+    { id: "boss-master", title: "Boss Master", emoji: "🐉" },
+    { id: "career-project-builder", title: "Project Builder", emoji: "💻" },
+    { id: "career-industry-ready", title: "Industry Ready", emoji: "🚀" },
+    { id: "first-opportunity", title: "Opportunity Creator", emoji: "📢" },
   ];
 
   const showToast = (title, message, emoji = "✨") => {
@@ -1257,6 +1297,96 @@ function StudentOSApp({ user }) {
   const pet = getPetByXp(xp);
   const kingdom = getKingdom();
   const kingdomProgress = Math.min((forest / kingdom.need) * 100, 100);
+
+  const careerStages = [
+    { name: "Freshman", emoji: "🎒", min: 0, next: 500 },
+    { name: "Active Learner", emoji: "📚", min: 500, next: 1500 },
+    { name: "Skilled Student", emoji: "🧠", min: 1500, next: 3000 },
+    { name: "Project Builder", emoji: "💻", min: 3000, next: 6000 },
+    { name: "Intern Candidate", emoji: "📄", min: 6000, next: 10000 },
+    { name: "Industry Ready", emoji: "🚀", min: 10000, next: 16000 },
+    { name: "Top Performer", emoji: "🏆", min: 16000, next: 25000 },
+  ];
+
+  const careerStageIndex = Math.max(0, careerStages.findLastIndex((stage) => Number(xp || 0) >= stage.min));
+  const careerStage = careerStages[careerStageIndex] || careerStages[0];
+  const nextCareerStage = careerStages[careerStageIndex + 1] || null;
+  const careerProgress = nextCareerStage ? Math.min(100, Math.round(((xp - careerStage.min) / (nextCareerStage.min - careerStage.min)) * 100)) : 100;
+
+  const dailyMissionsV2 = [
+    { id: "login", title: "Open Student OS today", xp: 10, emoji: "✅", action: "Auto" },
+    { id: "study30", title: "Complete one focus session", xp: 20, emoji: "⏱️", action: "Start Focus" },
+    { id: "attendance", title: "Update attendance tracker", xp: 15, emoji: "📊", action: "Attendance" },
+    { id: "uploadNote", title: "Upload or help with notes", xp: 25, emoji: "📚", action: "Notes Hub" },
+    { id: "askAI", title: "Ask AI Companion once", xp: 20, emoji: "🤖", action: "AI" },
+  ];
+
+  const completedDailyMissionCount = dailyMissionsV2.filter((mission) => dailyMissionData?.completed?.[mission.id]).length;
+  const dailyMissionProgress = Math.round((completedDailyMissionCount / dailyMissionsV2.length) * 100);
+  const dailyMissionBonusReady = completedDailyMissionCount === dailyMissionsV2.length && !dailyMissionData?.bonusClaimed;
+
+  const completeDailyMission = (missionId, xpReward = 0, show = false) => {
+    if (!missionId || dailyMissionData?.completed?.[missionId]) return;
+    setDailyMissionData((prev) => ({
+      date: todayKey,
+      completed: { ...(prev?.date === todayKey ? prev.completed : { login: true }), [missionId]: true },
+      bonusClaimed: prev?.date === todayKey ? Boolean(prev.bonusClaimed) : false,
+    }));
+    if (xpReward > 0) addXp(xpReward);
+    unlockAchievement("daily-mission", "Daily Mission Progress", "🎯", "You completed a Student OS daily mission.", "toast");
+    if (show) showToast("Mission Complete", `+${xpReward} XP mission reward.`, "🎯");
+  };
+
+  const claimDailyMissionBonus = () => {
+    if (!dailyMissionBonusReady) return;
+    setDailyMissionData((prev) => ({ ...prev, bonusClaimed: true }));
+    addXp(80);
+    unlockAchievement("daily-champion", "Daily Champion", "🥇", "+80 XP. You completed every mission for today.", "milestone");
+  };
+
+  const buildBossQuestions = (topic) => [
+    { q: `What should you understand first in ${topic}?`, options: ["Core definition", "Page color", "File size", "Random examples"], answer: "Core definition" },
+    { q: `Best way to master ${topic}?`, options: ["Practice questions", "Skip revision", "Only memorize heading", "Ignore mistakes"], answer: "Practice questions" },
+    { q: `After learning ${topic}, what is the next step?`, options: ["Take a quiz", "Close the app", "Forget notes", "Avoid examples"], answer: "Take a quiz" },
+    { q: `What helps in exam revision for ${topic}?`, options: ["Keywords and formulas", "Phone scrolling", "No notes", "Guessing"], answer: "Keywords and formulas" },
+    { q: `How do you defeat the ${topic} boss?`, options: ["Revise weak points", "Skip hard questions", "Never test yourself", "Only read once"], answer: "Revise weak points" },
+  ];
+
+  const startBossBattle = () => {
+    const topic = bossTopic.trim() || weakestInternalSubject?.name || lowestAttendanceItem?.subject || "Today Topic";
+    setBossBattle({ topic, hp: 100, current: 0, correct: 0, questions: buildBossQuestions(topic), completed: false });
+    setBossSelectedAnswer("");
+    showToast("Boss Battle Started", `${topic} boss is ready.`, "⚔️");
+  };
+
+  const answerBossQuestion = (option) => {
+    if (!bossBattle || bossBattle.completed) return;
+    const question = bossBattle.questions[bossBattle.current];
+    const isCorrect = option === question.answer;
+    const nextHp = Math.max(0, bossBattle.hp - (isCorrect ? 20 : 0));
+    const nextIndex = bossBattle.current + 1;
+    const completedBoss = nextHp <= 0 || nextIndex >= bossBattle.questions.length;
+
+    if (completedBoss) {
+      const finalCorrect = bossBattle.correct + (isCorrect ? 1 : 0);
+      const won = nextHp <= 0 || finalCorrect >= 4;
+      setBossBattle({ ...bossBattle, hp: nextHp, current: bossBattle.current, correct: finalCorrect, completed: true, won });
+      setBossBattleHistory((prev) => [{ id: Date.now(), topic: bossBattle.topic, won, correct: finalCorrect, date: todayKey }, ...prev].slice(0, 20));
+      if (won) {
+        addXp(100);
+        completeDailyMission("askAI", 0, false);
+        unlockAchievement("first-boss", "Boss Defeated", "⚔️", `You defeated the ${bossBattle.topic} boss and earned +100 XP.`, "milestone");
+        if (bossBattleHistory.length + 1 >= 5) unlockAchievement("boss-master", "Boss Master", "🐉", "You defeated 5 topic bosses.", "milestone");
+      } else {
+        showToast("Boss Escaped", "Revise and try again. You are close.", "🐉");
+      }
+      return;
+    }
+
+    setBossBattle({ ...bossBattle, hp: nextHp, current: nextIndex, correct: bossBattle.correct + (isCorrect ? 1 : 0) });
+    setBossSelectedAnswer("");
+    showToast(isCorrect ? "Correct Hit" : "Missed", isCorrect ? "Boss HP reduced by 20." : "No damage. Learn and continue.", isCorrect ? "⚔️" : "🛡️");
+  };
 
   const attendanceAverage = attendanceItems.length
     ? Math.round(attendanceItems.reduce((sum, item) => sum + getAttendancePercent(item), 0) / attendanceItems.length)
@@ -1334,6 +1464,7 @@ function StudentOSApp({ user }) {
     setFocusEndTime(null);
     setTimeLeft(25 * 60);
     addXp(20);
+    completeDailyMission("study30", 0, false);
     setForest((prev) => {
       const newForest = prev + 1;
       if (newForest >= 25) unlockAchievement("forest-unlocked", "Forest Unlocked", "🌳", "You planted 25 trees and unlocked your first Study Forest.", "milestone");
@@ -1482,6 +1613,7 @@ function StudentOSApp({ user }) {
     setAttWeeks("");
     setAttTarget("75");
     addXp(5);
+    completeDailyMission("attendance", 0, false);
     unlockAchievement("first-attendance", "Attendance Added", "📊", "+5 XP. Attendance risk is now tracked.", "toast");
     publishFeedPost({
       type: "attendance",
@@ -1597,6 +1729,7 @@ function StudentOSApp({ user }) {
       response = `Semester health:\n\n• Current GPA: ${currentGpa}\n• Target GPA: ${targetGpa}\n• Attendance: ${attendanceAverage || 0}%\n• Internals: ${internalAverage || 0}%\n• Smart Health: ${smartHealth}%\n\n${smartHealth < 75 ? "Focus on attendance risk, incomplete internals, and urgent reminders first." : "You are on track. Keep the rhythm with daily focus sessions."}`;
     }
 
+    completeDailyMission("askAI", 0, false);
     setAiAnswer(response);
   };
 
@@ -1691,6 +1824,12 @@ function StudentOSApp({ user }) {
   const progress = Math.min((xp / nextLevelXp) * 100, 100);
   const academicScore = Math.min(100, Math.round(smartHealth * 0.75 + Math.min(level * 2, 15) + Math.min(streak, 10)));
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (careerStage.name === "Project Builder") unlockAchievement("career-project-builder", "Project Builder", "💻", "Your XP journey reached the Project Builder stage.", "toast");
+    if (careerStage.name === "Industry Ready" || careerStage.name === "Top Performer") unlockAchievement("career-industry-ready", "Industry Ready", "🚀", "Your profile is moving toward career readiness.", "milestone");
+  }, [careerStage.name, user?.uid]);
+
   const toggleTheme = () => setTheme((current) => (current === "dark" ? "light" : "dark"));
 
   const appBg = isDark ? "bg-[#070b18] text-slate-100" : "bg-[#f4f7fb] text-slate-900";
@@ -1720,6 +1859,8 @@ function StudentOSApp({ user }) {
       currentGpa,
       semesterCredits,
       calendarEvents,
+      dailyMissionData,
+      bossBattleHistory,
       theme,
       exportedAt: new Date().toISOString(),
     };
@@ -1905,6 +2046,9 @@ function StudentOSApp({ user }) {
       setNoteDescription("");
       setSelectedNoteFile(null);
       addXp(25);
+      completeDailyMission("uploadNote", 0, false);
+      unlockAchievement("first-note", "First Note Upload", "📚", "You uploaded your first PDF note for students.", "toast");
+      if (notes.filter((note) => note.userId === user.uid).length + 1 >= 10) unlockAchievement("notes-hero", "Notes Hero", "📘", "You uploaded 10 notes and became a real contributor.", "milestone");
       showToast("PDF Uploaded", "+25 XP. Your notes are now available for students.", "📄");
       createNotification({
         userId: user.uid,
@@ -2152,6 +2296,7 @@ function StudentOSApp({ user }) {
           <NavItem active={activePage === "notifications"} onClick={() => setActivePage("notifications")} icon={<Bell size={20} />} label={`Notifications${unreadNotificationCount ? ` (${unreadNotificationCount})` : ""}`} navHover={navHover} />
           <NavItem active={activePage === "ai"} onClick={() => setActivePage("ai")} icon={<Bot size={20} />} label="AI Companion" navHover={navHover} />
           <NavItem active={activePage === "achievements"} onClick={() => setActivePage("achievements")} icon={<Trophy size={20} />} label="Achievements" navHover={navHover} />
+          <NavItem active={activePage === "quest"} onClick={() => setActivePage("quest")} icon={<Target size={20} />} label="Career Quest" navHover={navHover} />
           <NavItem active={activePage === "analytics"} onClick={() => setActivePage("analytics")} icon={<TrendingUp size={20} />} label="Analytics" navHover={navHover} />
           <NavItem active={activePage === "feed"} onClick={() => setActivePage("feed")} icon={<Rss size={20} />} label="Notes Hub" navHover={navHover} />
           <NavItem active={activePage === "opportunities"} onClick={() => setActivePage("opportunities")} icon={<TrendingUp size={20} />} label="Opportunities" navHover={navHover} />
@@ -2221,7 +2366,7 @@ function StudentOSApp({ user }) {
         </motion.section>
 
         <div className="hidden">
-          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "notifications", "ai", "achievements", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
+          {["dashboard", "attendance", "internals", "semester", "calendar", "reminders", "notifications", "ai", "achievements", "quest", "analytics", "feed", "social", "portfolio", "leaderboard", "settings"].map((page) => (
             <button
               key={page}
               onClick={() => setActivePage(page)}
@@ -2265,6 +2410,18 @@ function StudentOSApp({ user }) {
                 formatTime={formatTime}
                 forest={forest}
                 connectedStudents={connectedStudents}
+                dailyMissionsV2={dailyMissionsV2}
+                dailyMissionData={dailyMissionData}
+                dailyMissionProgress={dailyMissionProgress}
+                completedDailyMissionCount={completedDailyMissionCount}
+                dailyMissionBonusReady={dailyMissionBonusReady}
+                completeDailyMission={completeDailyMission}
+                claimDailyMissionBonus={claimDailyMissionBonus}
+                careerStages={careerStages}
+                careerStageIndex={careerStageIndex}
+                careerStage={careerStage}
+                careerProgress={careerProgress}
+                nextCareerStage={nextCareerStage}
               />
             </PageMotion>
           )}
@@ -2442,6 +2599,43 @@ function StudentOSApp({ user }) {
                 level={level}
                 streak={streak}
                 forest={forest}
+              />
+            </PageMotion>
+          )}
+
+          {activePage === "quest" && (
+            <PageMotion key="quest">
+              <QuestHubPage
+                isDark={isDark}
+                cardClass={cardClass}
+                inputClass={inputClass}
+                dailyMissionsV2={dailyMissionsV2}
+                dailyMissionData={dailyMissionData}
+                dailyMissionProgress={dailyMissionProgress}
+                completedDailyMissionCount={completedDailyMissionCount}
+                dailyMissionBonusReady={dailyMissionBonusReady}
+                completeDailyMission={completeDailyMission}
+                claimDailyMissionBonus={claimDailyMissionBonus}
+                setActivePage={setActivePage}
+                careerStages={careerStages}
+                careerStageIndex={careerStageIndex}
+                careerStage={careerStage}
+                careerProgress={careerProgress}
+                nextCareerStage={nextCareerStage}
+                profile={profile}
+                xp={xp}
+                notes={notes}
+                opportunities={opportunities}
+                bossTopic={bossTopic}
+                setBossTopic={setBossTopic}
+                bossBattle={bossBattle}
+                bossSelectedAnswer={bossSelectedAnswer}
+                setBossSelectedAnswer={setBossSelectedAnswer}
+                startBossBattle={startBossBattle}
+                answerBossQuestion={answerBossQuestion}
+                bossBattleHistory={bossBattleHistory}
+                achievements={achievements}
+                allAchievements={allAchievements}
               />
             </PageMotion>
           )}
@@ -2670,7 +2864,7 @@ function PageMotion({ children }) {
   );
 }
 
-function DashboardPage({ isDark, cardClass, academicScore, streak, attendanceAverage, riskyCount, lowestAttendanceItem, getAttendancePercent, kingdom, semesterHealth, smartHealth, aiInsights, profile, nextEvent, getEventStatus, reminders, missions, completed, completeMission, setActivePage, startTimer, pauseTimer, resetTimer, isRunning, timeLeft, formatTime, forest, connectedStudents }) {
+function DashboardPage({ isDark, cardClass, academicScore, streak, attendanceAverage, riskyCount, lowestAttendanceItem, getAttendancePercent, kingdom, semesterHealth, smartHealth, aiInsights, profile, nextEvent, getEventStatus, reminders, missions, completed, completeMission, setActivePage, startTimer, pauseTimer, resetTimer, isRunning, timeLeft, formatTime, forest, connectedStudents, dailyMissionsV2, dailyMissionData, dailyMissionProgress, completedDailyMissionCount, dailyMissionBonusReady, completeDailyMission, claimDailyMissionBonus, careerStages, careerStageIndex, careerStage, careerProgress, nextCareerStage }) {
   const pendingReminders = reminders.filter((r) => !r.completed).length;
   return (
     <>
@@ -2685,6 +2879,31 @@ function DashboardPage({ isDark, cardClass, academicScore, streak, attendanceAve
           icon={<BarChart3 />}
         />
         <StatCard isDark={isDark} title="Kingdom" value={`${kingdom.icon} ${kingdom.name}`} color="text-emerald-600" icon={<Trees />} />
+      </section>
+
+      <section className="grid lg:grid-cols-[1.1fr_0.9fr] gap-4 mt-4 md:mt-5">
+        <DailyMissionsCard
+          isDark={isDark}
+          cardClass={cardClass}
+          dailyMissionsV2={dailyMissionsV2}
+          dailyMissionData={dailyMissionData}
+          dailyMissionProgress={dailyMissionProgress}
+          completedDailyMissionCount={completedDailyMissionCount}
+          dailyMissionBonusReady={dailyMissionBonusReady}
+          completeDailyMission={completeDailyMission}
+          claimDailyMissionBonus={claimDailyMissionBonus}
+          setActivePage={setActivePage}
+        />
+        <CareerJourneyCard
+          isDark={isDark}
+          cardClass={cardClass}
+          careerStages={careerStages}
+          careerStageIndex={careerStageIndex}
+          careerStage={careerStage}
+          careerProgress={careerProgress}
+          nextCareerStage={nextCareerStage}
+          xp={academicScore}
+        />
       </section>
 
       <section className={`${cardClass} mt-4 md:mt-5 p-3 md:p-4 rounded-2xl`}>
@@ -2826,6 +3045,157 @@ function DashboardPage({ isDark, cardClass, academicScore, streak, attendanceAve
         </div>
       </section>
     </>
+  );
+}
+
+
+function DailyMissionsCard({ isDark, cardClass, dailyMissionsV2 = [], dailyMissionData, dailyMissionProgress = 0, completedDailyMissionCount = 0, dailyMissionBonusReady, completeDailyMission, claimDailyMissionBonus, setActivePage }) {
+  const goToMission = (mission) => {
+    if (mission.id === "study30") return setActivePage("dashboard");
+    if (mission.id === "attendance") return setActivePage("attendance");
+    if (mission.id === "uploadNote") return setActivePage("feed");
+    if (mission.id === "askAI") return setActivePage("ai");
+    return completeDailyMission(mission.id, mission.xp, true);
+  };
+
+  return (
+    <div className={`${cardClass} p-4 md:p-5 rounded-2xl`}>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-lg md:text-xl font-black flex items-center gap-2"><Target size={20} /> Daily Missions</h3>
+          <p className={isDark ? "text-sm text-slate-300" : "text-sm text-gray-500"}>Complete study actions daily and keep Student OS as a habit.</p>
+        </div>
+        <span className="bg-blue-600 text-white text-xs font-black px-3 py-1 rounded-full">{completedDailyMissionCount}/{dailyMissionsV2.length}</span>
+      </div>
+      <div className={isDark ? "bg-white/10 rounded-full h-3" : "bg-gray-100 rounded-full h-3"}>
+        <motion.div className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full" animate={{ width: `${dailyMissionProgress}%` }} transition={{ duration: 0.7 }} />
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 mt-4">
+        {dailyMissionsV2.map((mission) => {
+          const done = Boolean(dailyMissionData?.completed?.[mission.id]);
+          return (
+            <div key={mission.id} className={done ? (isDark ? "bg-green-500/15 border border-green-300/20 rounded-2xl p-3" : "bg-green-50 border border-green-200 rounded-2xl p-3") : (isDark ? "bg-white/5 border border-white/10 rounded-2xl p-3" : "bg-gray-50 border border-gray-200 rounded-2xl p-3")}>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">{done ? "✅" : mission.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-sm leading-tight">{mission.title}</p>
+                  <p className={isDark ? "text-xs text-slate-400 mt-1" : "text-xs text-gray-500 mt-1"}>+{mission.xp} XP · {mission.action}</p>
+                </div>
+              </div>
+              <button onClick={() => goToMission(mission)} disabled={done || mission.id === "login"} className={`mt-3 w-full py-2 rounded-xl text-xs font-black ${done ? "bg-green-600 text-white" : mission.id === "login" ? "bg-gray-400 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}>{done ? "Completed" : mission.id === "login" ? "Auto" : "Do Now"}</button>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={claimDailyMissionBonus} disabled={!dailyMissionBonusReady} className={`mt-4 w-full py-3 rounded-xl font-black ${dailyMissionBonusReady ? "bg-yellow-400 hover:bg-yellow-300 text-black" : isDark ? "bg-white/10 text-slate-400" : "bg-gray-100 text-gray-400"}`}>
+        {dailyMissionData?.bonusClaimed ? "🥇 Bonus Claimed" : dailyMissionBonusReady ? "Claim Daily Champion Bonus +80 XP" : "Complete all missions to unlock +80 XP"}
+      </button>
+    </div>
+  );
+}
+
+function CareerJourneyCard({ isDark, cardClass, careerStages = [], careerStageIndex = 0, careerStage, careerProgress = 0, nextCareerStage, xp }) {
+  return (
+    <div className={`${cardClass} p-4 md:p-5 rounded-2xl`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg md:text-xl font-black flex items-center gap-2"><GraduationCap size={20} /> Career Journey</h3>
+          <p className={isDark ? "text-sm text-slate-300" : "text-sm text-gray-500"}>Gamification based on real student growth, not only fantasy levels.</p>
+        </div>
+        <span className="text-3xl">{careerStage?.emoji}</span>
+      </div>
+      <div className="mt-4">
+        <p className="text-2xl font-black">{careerStage?.name || "Freshman"}</p>
+        <p className={isDark ? "text-sm text-slate-300" : "text-sm text-gray-500"}>{nextCareerStage ? `Next: ${nextCareerStage.emoji} ${nextCareerStage.name}` : "Max stage reached"}</p>
+      </div>
+      <div className={isDark ? "bg-white/10 rounded-full h-3 mt-4" : "bg-gray-100 rounded-full h-3 mt-4"}>
+        <motion.div className="bg-gradient-to-r from-purple-500 to-yellow-400 h-3 rounded-full" animate={{ width: `${careerProgress}%` }} transition={{ duration: 0.7 }} />
+      </div>
+      <div className="grid grid-cols-4 gap-2 mt-4">
+        {careerStages.slice(0, 7).map((stage, index) => (
+          <div key={stage.name} className={`text-center rounded-2xl p-2 ${index <= careerStageIndex ? (isDark ? "bg-blue-500/20 border border-blue-300/20" : "bg-blue-50 border border-blue-100") : (isDark ? "bg-white/5 border border-white/10 opacity-50" : "bg-gray-50 border border-gray-100 opacity-60")}`}>
+            <p className="text-xl">{index <= careerStageIndex ? stage.emoji : "🔒"}</p>
+            <p className="text-[10px] font-bold mt-1 leading-tight">{stage.name}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SkillCardsPanel({ isDark, cardClass, profile, notes = [], opportunities = [], achievements = [] }) {
+  const unlocked = new Set([...(profile?.skills || [])]);
+  if (notes.some((note) => note.userId)) unlocked.add("Notes Sharing");
+  if (opportunities.length) unlocked.add("Opportunity Builder");
+  if (achievements.includes("first-boss")) unlocked.add("Quiz Fighter");
+  if (profile?.github) unlocked.add("GitHub Profile");
+  if (profile?.linkedin) unlocked.add("LinkedIn Ready");
+  const cards = ["C Programming", "Python", "React", "Firebase", "AI Basics", "Notes Sharing", "Opportunity Builder", "Quiz Fighter", "GitHub Profile", "LinkedIn Ready"];
+  return (
+    <div className={`${cardClass} p-5 rounded-2xl`}>
+      <h3 className="text-xl font-black flex items-center gap-2"><Sparkles /> Skill Cards</h3>
+      <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-500 mt-1"}>Unlock cards from profile skills, notes, projects, and boss battles.</p>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+        {cards.map((card) => {
+          const active = unlocked.has(card);
+          return <div key={card} className={`rounded-2xl p-3 text-center border ${active ? (isDark ? "bg-yellow-400/10 border-yellow-300/30" : "bg-yellow-50 border-yellow-200") : (isDark ? "bg-white/5 border-white/10 opacity-50" : "bg-gray-50 border-gray-200 opacity-60")}`}><p className="text-3xl">{active ? "🃏" : "🔒"}</p><p className="text-xs font-black mt-2">{card}</p></div>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BossBattlePanel({ isDark, cardClass, inputClass, bossTopic, setBossTopic, bossBattle, startBossBattle, answerBossQuestion, bossBattleHistory }) {
+  const currentQuestion = bossBattle && !bossBattle.completed ? bossBattle.questions[bossBattle.current] : null;
+  return (
+    <div className={`${cardClass} p-5 rounded-2xl`}>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black flex items-center gap-2">⚔️ Topic Boss Battle</h3>
+          <p className={isDark ? "text-sm text-slate-300 mt-1" : "text-sm text-gray-500 mt-1"}>Turn any topic into a mini game. Correct answers reduce boss HP.</p>
+        </div>
+        <span className="bg-red-600 text-white text-xs font-black px-3 py-1 rounded-full">Premium-style feature</span>
+      </div>
+      <div className="grid md:grid-cols-[1fr_auto] gap-3 mt-4">
+        <input className={inputClass} value={bossTopic} onChange={(e) => setBossTopic(e.target.value)} placeholder="Enter topic: Digital Electronics Unit 3" />
+        <button onClick={startBossBattle} className="bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-xl font-black">Start Boss</button>
+      </div>
+
+      {bossBattle && (
+        <div className={isDark ? "bg-white/5 border border-white/10 rounded-2xl p-4 mt-4" : "bg-red-50 border border-red-100 rounded-2xl p-4 mt-4"}>
+          <div className="flex items-center justify-between gap-3">
+            <div><p className="font-black text-lg">🐉 {bossBattle.topic} Boss</p><p className="text-sm text-gray-500">Correct: {bossBattle.correct}/{bossBattle.questions.length}</p></div>
+            <span className="font-black text-red-500">HP {bossBattle.hp}/100</span>
+          </div>
+          <div className={isDark ? "bg-white/10 rounded-full h-3 mt-3" : "bg-white rounded-full h-3 mt-3"}><motion.div className="bg-red-600 h-3 rounded-full" animate={{ width: `${bossBattle.hp}%` }} /></div>
+          {bossBattle.completed ? (
+            <div className="mt-4 text-center"><p className="text-5xl">{bossBattle.won ? "🏆" : "🐉"}</p><p className="font-black mt-2">{bossBattle.won ? "Boss Defeated! +100 XP" : "Boss Escaped. Try again."}</p></div>
+          ) : currentQuestion ? (
+            <div className="mt-4"><p className="font-bold">{currentQuestion.q}</p><div className="grid md:grid-cols-2 gap-2 mt-3">{currentQuestion.options.map((option) => <button key={option} onClick={() => answerBossQuestion(option)} className={isDark ? "bg-white/10 hover:bg-white/20 rounded-xl p-3 text-left text-sm" : "bg-white hover:bg-gray-50 rounded-xl p-3 text-left text-sm border border-gray-100"}>{option}</button>)}</div></div>
+          ) : null}
+        </div>
+      )}
+
+      {bossBattleHistory.length > 0 && <div className="mt-4"><p className="font-bold mb-2">Recent Battles</p><div className="grid md:grid-cols-3 gap-2">{bossBattleHistory.slice(0, 3).map((battle) => <div key={battle.id} className={isDark ? "bg-white/5 rounded-xl p-3 text-sm" : "bg-gray-50 rounded-xl p-3 text-sm"}>{battle.won ? "🏆" : "🐉"} {battle.topic}<br/><span className="text-xs text-gray-500">{battle.correct}/5 correct</span></div>)}</div></div>}
+    </div>
+  );
+}
+
+function QuestHubPage({ isDark, cardClass, inputClass, dailyMissionsV2, dailyMissionData, dailyMissionProgress, completedDailyMissionCount, dailyMissionBonusReady, completeDailyMission, claimDailyMissionBonus, setActivePage, careerStages, careerStageIndex, careerStage, careerProgress, nextCareerStage, profile, xp, notes, opportunities, bossTopic, setBossTopic, bossBattle, startBossBattle, answerBossQuestion, bossBattleHistory, achievements, allAchievements }) {
+  return (
+    <section className="mt-5 space-y-5">
+      <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-indigo-950 text-white rounded-3xl p-6 border border-white/10 shadow-2xl">
+        <p className="text-yellow-300 font-black tracking-widest text-sm">STUDENT OS 2.0</p>
+        <h2 className="text-3xl md:text-5xl font-black mt-2">Career Quest Engine</h2>
+        <p className="text-indigo-100 mt-3 max-w-3xl">Daily Missions + Career Journey + Skill Cards + Topic Boss Battles. This makes Student OS a habit, not just a calculator.</p>
+      </div>
+      <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-5">
+        <DailyMissionsCard isDark={isDark} cardClass={cardClass} dailyMissionsV2={dailyMissionsV2} dailyMissionData={dailyMissionData} dailyMissionProgress={dailyMissionProgress} completedDailyMissionCount={completedDailyMissionCount} dailyMissionBonusReady={dailyMissionBonusReady} completeDailyMission={completeDailyMission} claimDailyMissionBonus={claimDailyMissionBonus} setActivePage={setActivePage} />
+        <CareerJourneyCard isDark={isDark} cardClass={cardClass} careerStages={careerStages} careerStageIndex={careerStageIndex} careerStage={careerStage} careerProgress={careerProgress} nextCareerStage={nextCareerStage} xp={xp} />
+      </div>
+      <SkillCardsPanel isDark={isDark} cardClass={cardClass} profile={profile} notes={notes} opportunities={opportunities} achievements={achievements} />
+      <BossBattlePanel isDark={isDark} cardClass={cardClass} inputClass={inputClass} bossTopic={bossTopic} setBossTopic={setBossTopic} bossBattle={bossBattle} startBossBattle={startBossBattle} answerBossQuestion={answerBossQuestion} bossBattleHistory={bossBattleHistory} />
+    </section>
   );
 }
 
