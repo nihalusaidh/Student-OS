@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   arrayRemove,
@@ -17,6 +17,7 @@ import {
 import { auth, db } from "./firebase";
 import { supabase } from "./supabase";
 import Login from "./pages/Login";
+import Phaser from "phaser";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame,
@@ -6599,6 +6600,285 @@ function MobileBottomNav({ activePage, setActivePage, isDark }) {
 }
 
 
+
+function RealArcheryArena({ question, isDark, onAnswer }) {
+  const gameRef = useRef(null);
+  const containerRef = useRef(null);
+  const onAnswerRef = useRef(onAnswer);
+
+  useEffect(() => {
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    if (!question || !containerRef.current) return undefined;
+
+    const width = Math.min(containerRef.current.clientWidth || 720, 900);
+    const height = width < 520 ? 420 : 480;
+    let answered = false;
+
+    class ArcheryScene extends Phaser.Scene {
+      constructor() {
+        super("ArcheryScene");
+      }
+
+      create() {
+        const bgTop = isDark ? 0x050816 : 0xeaf3ff;
+        const panel = isDark ? 0x111827 : 0xffffff;
+        const textColor = isDark ? "#ffffff" : "#0f172a";
+        const subText = isDark ? "#cbd5e1" : "#475569";
+        const targetFill = isDark ? 0x1f2937 : 0xf8fafc;
+        const targetStroke = isDark ? 0x60a5fa : 0x2563eb;
+
+        this.cameras.main.setBackgroundColor(bgTop);
+
+        const title = this.add.text(20, 18, question.question, {
+          fontFamily: "Arial",
+          fontSize: width < 520 ? "18px" : "22px",
+          fontStyle: "bold",
+          color: textColor,
+          wordWrap: { width: width - 40 },
+        });
+
+        this.add.text(20, 62 + Math.max(0, title.height - 26), "Drag backward from the bow, aim, and release the arrow.", {
+          fontFamily: "Arial",
+          fontSize: "13px",
+          color: subText,
+        });
+
+        const groundY = height - 44;
+        const bowX = 72;
+        const bowY = Math.floor(height * 0.58);
+        const arrowStartX = bowX + 32;
+        const arrowStartY = bowY;
+
+        const ground = this.add.graphics();
+        ground.fillStyle(isDark ? 0x0f172a : 0xdbeafe, 1);
+        ground.fillRoundedRect(14, groundY, width - 28, 30, 14);
+
+        const bow = this.add.graphics();
+        bow.lineStyle(8, 0xf59e0b, 1);
+        bow.beginPath();
+        bow.arc(bowX, bowY, 48, Phaser.Math.DegToRad(-65), Phaser.Math.DegToRad(65), false);
+        bow.strokePath();
+        bow.lineStyle(2, isDark ? 0xe5e7eb : 0x111827, 1);
+        bow.lineBetween(bowX + 21, bowY - 43, bowX + 21, bowY + 43);
+        bow.fillStyle(0x92400e, 1);
+        bow.fillCircle(bowX + 18, bowY, 5);
+
+        const player = this.add.text(bowX - 22, bowY + 58, "🏹", { fontSize: "42px" }).setOrigin(0.5);
+
+        const aimLine = this.add.graphics();
+        const arrow = this.add.container(arrowStartX, arrowStartY);
+        const shaft = this.add.rectangle(0, 0, 62, 5, 0xf8fafc).setOrigin(0, 0.5);
+        const tip = this.add.triangle(66, 0, 0, -10, 0, 10, 18, 0, 0xef4444).setOrigin(0.5);
+        const feather1 = this.add.triangle(-4, -7, 0, 0, 14, -5, 4, -16, 0x60a5fa).setOrigin(0.5);
+        const feather2 = this.add.triangle(-4, 7, 0, 0, 14, 5, 4, 16, 0x93c5fd).setOrigin(0.5);
+        arrow.add([shaft, tip, feather1, feather2]);
+        arrow.setSize(78, 22);
+        this.physics.add.existing(arrow);
+        arrow.body.setAllowGravity(false);
+        arrow.body.setSize(76, 16);
+        arrow.body.setOffset(0, 3);
+
+        const targetPositions = [
+          { x: width - 122, y: 135 },
+          { x: width - 122, y: 225 },
+          { x: width - 122, y: 315 },
+          { x: width - 300, y: 225 },
+        ];
+
+        const targets = question.options.map((option, index) => {
+          const pos = targetPositions[index] || targetPositions[0];
+          const container = this.add.container(pos.x, pos.y);
+          const ring = this.add.graphics();
+          ring.fillStyle(targetFill, 1);
+          ring.fillCircle(0, 0, 42);
+          ring.lineStyle(5, targetStroke, 1);
+          ring.strokeCircle(0, 0, 42);
+          ring.lineStyle(3, 0xfbbf24, 1);
+          ring.strokeCircle(0, 0, 27);
+          ring.fillStyle(0xef4444, 1);
+          ring.fillCircle(0, 0, 11);
+          const label = this.add.text(0, 0, option, {
+            fontFamily: "Arial",
+            fontSize: width < 520 ? "14px" : "16px",
+            fontStyle: "bold",
+            color: textColor,
+          }).setOrigin(0.5);
+          container.add([ring, label]);
+          container.setSize(84, 84);
+          this.physics.add.existing(container);
+          container.body.setAllowGravity(false);
+          container.body.setCircle(42);
+          container.body.setVelocityY(index % 2 === 0 ? 38 : -38);
+          container.answer = option;
+          return container;
+        });
+
+        this.time.addEvent({
+          delay: 16,
+          loop: true,
+          callback: () => {
+            targets.forEach((target) => {
+              if (target.y < 110) target.body.setVelocityY(Math.abs(target.body.velocity.y));
+              if (target.y > height - 92) target.body.setVelocityY(-Math.abs(target.body.velocity.y));
+            });
+          },
+        });
+
+        const powerText = this.add.text(20, height - 28, "Power: drag backward", {
+          fontFamily: "Arial",
+          fontSize: "13px",
+          fontStyle: "bold",
+          color: subText,
+        });
+
+        let dragging = false;
+        let pullPoint = new Phaser.Math.Vector2(arrowStartX, arrowStartY);
+
+        const resetArrow = () => {
+          arrow.setPosition(arrowStartX, arrowStartY);
+          arrow.setRotation(0);
+          arrow.body.setVelocity(0, 0);
+          arrow.body.setAllowGravity(false);
+          arrow.setAlpha(1);
+          aimLine.clear();
+        };
+
+        const drawAim = (pointer) => {
+          const dx = arrowStartX - pointer.x;
+          const dy = arrowStartY - pointer.y;
+          const power = Phaser.Math.Clamp(Math.sqrt(dx * dx + dy * dy), 0, 150);
+          const angle = Phaser.Math.Angle.Between(pointer.x, pointer.y, arrowStartX, arrowStartY);
+          arrow.setPosition(arrowStartX, arrowStartY);
+          arrow.setRotation(angle);
+          aimLine.clear();
+          aimLine.lineStyle(3, 0x38bdf8, 0.85);
+          aimLine.lineBetween(arrowStartX, arrowStartY, pointer.x, pointer.y);
+          aimLine.fillStyle(0x38bdf8, 0.25);
+          aimLine.fillCircle(pointer.x, pointer.y, 10);
+          powerText.setText(`Power: ${Math.round(power)} · Release to shoot`);
+          player.setScale(1 + power / 500);
+          pullPoint.set(pointer.x, pointer.y);
+        };
+
+        this.input.on("pointerdown", (pointer) => {
+          if (answered) return;
+          dragging = true;
+          drawAim(pointer);
+        });
+
+        this.input.on("pointermove", (pointer) => {
+          if (!dragging || answered) return;
+          drawAim(pointer);
+        });
+
+        this.input.on("pointerup", (pointer) => {
+          if (!dragging || answered) return;
+          dragging = false;
+          aimLine.clear();
+          const dx = arrowStartX - pullPoint.x;
+          const dy = arrowStartY - pullPoint.y;
+          const power = Phaser.Math.Clamp(Math.sqrt(dx * dx + dy * dy), 50, 170);
+          const angle = Phaser.Math.Angle.Between(pullPoint.x, pullPoint.y, arrowStartX, arrowStartY);
+          arrow.setRotation(angle);
+          arrow.body.setAllowGravity(false);
+          arrow.body.setVelocity(Math.cos(angle) * power * 5.2, Math.sin(angle) * power * 5.2);
+          powerText.setText("Arrow flying...");
+
+          this.tweens.add({ targets: player, scale: 1, duration: 220, ease: "Back.easeOut" });
+
+          this.time.delayedCall(1800, () => {
+            if (!answered) {
+              resetArrow();
+              powerText.setText("Missed. Drag again.");
+            }
+          });
+        });
+
+        targets.forEach((target) => {
+          this.physics.add.overlap(arrow, target, () => {
+            if (answered) return;
+            answered = true;
+            arrow.body.setVelocity(0, 0);
+            target.body.setVelocity(0, 0);
+            const correct = target.answer === question.answer;
+
+            const burstColor = correct ? 0x22c55e : 0xef4444;
+            const burst = this.add.particles(target.x, target.y, "spark", {
+              lifespan: 650,
+              speed: { min: 80, max: 220 },
+              scale: { start: 0.65, end: 0 },
+              quantity: 18,
+              blendMode: "ADD",
+              tint: burstColor,
+            });
+            this.time.delayedCall(500, () => burst.destroy());
+
+            this.tweens.add({
+              targets: target,
+              scale: correct ? 1.35 : 0.85,
+              alpha: correct ? 0 : 0.45,
+              angle: correct ? 360 : -18,
+              duration: 450,
+              ease: "Back.easeIn",
+            });
+
+            this.add.text(target.x, target.y - 70, correct ? "PERFECT HIT!" : "WRONG TARGET!", {
+              fontFamily: "Arial",
+              fontSize: width < 520 ? "18px" : "24px",
+              fontStyle: "bold",
+              color: correct ? "#22c55e" : "#ef4444",
+              stroke: "#000000",
+              strokeThickness: 4,
+            }).setOrigin(0.5);
+
+            this.time.delayedCall(650, () => {
+              onAnswerRef.current?.(target.answer);
+            });
+          });
+        });
+
+        const spark = this.add.graphics();
+        spark.fillStyle(0xffffff, 1);
+        spark.fillCircle(0, 0, 4);
+        spark.generateTexture("spark", 8, 8);
+        spark.destroy();
+      }
+    }
+
+    const config = {
+      type: Phaser.AUTO,
+      parent: containerRef.current,
+      width,
+      height,
+      backgroundColor: isDark ? "#050816" : "#eaf3ff",
+      physics: {
+        default: "arcade",
+        arcade: { debug: false },
+      },
+      scene: ArcheryScene,
+      transparent: false,
+    };
+
+    gameRef.current = new Phaser.Game(config);
+
+    return () => {
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
+    };
+  }, [question, isDark]);
+
+  return (
+    <div className="rounded-3xl overflow-hidden border border-blue-400/30 bg-slate-950 shadow-2xl">
+      <div ref={containerRef} className="w-full min-h-[420px]" />
+    </div>
+  );
+}
+
 function StudyGamesPage({
   isDark,
   cardClass,
@@ -6693,19 +6973,37 @@ function StudyGamesPage({
       );
     }
 
-    if (studyGameMode === "archery" || studyGameMode === "blast") {
+    if (studyGameMode === "archery") {
+      return (
+        <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-4xl md:text-5xl">🏹</p>
+              <p className="font-black mt-1">Real Archery Arena</p>
+            </div>
+            <div className="text-right text-xs md:text-sm opacity-75">
+              <p>Mouse / touch supported</p>
+              <p>Drag backward, aim, release.</p>
+            </div>
+          </div>
+          <RealArcheryArena question={currentQuestion} isDark={isDark} onAnswer={answerStudyGame} />
+        </div>
+      );
+    }
+
+    if (studyGameMode === "blast") {
       return (
         <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-5xl">{studyGameMode === "archery" ? "🏹" : "💥"}</p>
-            <p className="text-xs md:text-sm opacity-70">Tap the correct answer target.</p>
+            <p className="text-5xl">💥</p>
+            <p className="text-xs md:text-sm opacity-70">Tap the correct moving answer target.</p>
           </div>
           <p className="text-lg md:text-2xl font-black mb-4">{currentQuestion.question}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {currentQuestion.options.map((option) => (
               <motion.button
                 key={option}
-                animate={studyGameMode === "blast" ? { y: [0, -8, 0] } : {}}
+                animate={{ y: [0, -8, 0], rotate: [0, 3, -3, 0] }}
                 transition={{ repeat: Infinity, duration: 1.7 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => answerStudyGame(option)}
