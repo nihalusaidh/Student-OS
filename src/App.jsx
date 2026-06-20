@@ -1694,39 +1694,228 @@ function StudentOSApp({ user }) {
   const sortedEvents = [...calendarEvents].sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const handleAskAI = () => {
-    const question = aiQuestion.trim().toLowerCase();
-    if (!question) {
-      return setAiAnswer("Ask: I have exam tomorrow, attendance risk, internal marks, reminder, semester health, or what should I do today?");
-    }
+    const questionRaw = aiQuestion.trim();
+    const question = questionRaw.toLowerCase();
 
-    const studentName = profile.name || "Student";
+    const studentName = profile.name || user?.displayName || "Student";
     const riskyAttendance = attendanceItems.filter((item) => getAttendancePercent(item) < Number(item.target || profile.targetAttendance || 75));
-    const nearestEvents = sortedEvents.slice(0, 3);
-    const pendingTasks = reminders.filter((item) => !item.completed).slice(0, 3);
+    const safeAttendance = attendanceItems.filter((item) => getAttendancePercent(item) >= Number(item.target || profile.targetAttendance || 75));
+    const lowestAttendance = attendanceItems.length
+      ? [...attendanceItems].sort((a, b) => getAttendancePercent(a) - getAttendancePercent(b))[0]
+      : null;
+
+    const completedInternalSubjects = internalSubjects.map((subject) => ({
+      ...subject,
+      performance: getSubjectInternalPerformance(subject),
+    }));
+    const weakestInternal = completedInternalSubjects.length
+      ? [...completedInternalSubjects].sort((a, b) => a.performance - b.performance)[0]
+      : null;
     const missingInternals = internalSubjects.filter((subject) => !subject.components?.length || subject.components.some((component) => component.status !== "completed"));
 
-    let response = `Hi ${studentName} 👋\n\nSmart Student OS check:\n\n• Smart Health: ${smartHealth}%\n• XP: ${xp}\n• Streak: ${streak} day${streak === 1 ? "" : "s"}\n• Attendance Average: ${attendanceAverage || 0}%\n• Internal Performance: ${internalAverage || 0}%\n• Pending Reminders: ${pendingReminderCount}\n• Upcoming Events This Week: ${upcomingWeekEvents.length}\n\nRecommended next move: ${riskyAttendance.length ? "fix attendance risk first" : urgentReminderCount ? "clear the nearest urgent reminder" : "complete one focus session and update one tracker"}.`;
+    const pendingTasks = reminders.filter((item) => !item.completed).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const nearestEvents = sortedEvents.slice(0, 5);
+    const nextAcademicEvent = upcomingSortedEvents[0] || sortedEvents[0] || null;
 
-    if (question.includes("today") || question.includes("plan") || question.includes("what should")) {
-      response = `Today's plan for ${studentName}:\n\n1. ${riskyAttendance.length ? `Attend ${riskyAttendance[0].subject} first — it is at ${getAttendancePercent(riskyAttendance[0])}%.` : "Attendance is not the biggest risk today."}\n2. ${pendingTasks.length ? `Clear: ${pendingTasks[0].title} (${getReminderStatus(pendingTasks[0].date).label}).` : "No urgent reminders pending."}\n3. Complete one 25-minute focus session to protect your streak.\n4. ${missingInternals.length ? `Update internals for ${missingInternals[0].name}.` : "Internals look updated."}\n\nSmart Health: ${smartHealth}%.`;
-    } else if (question.includes("attendance") || question.includes("class")) {
-      response = riskyAttendance.length
-        ? `Attendance risk detected:\n\n${riskyAttendance.map((item) => `• ${item.subject}: ${getAttendancePercent(item)}% — ${getAttendanceAdvice(item)}`).join("\n")}\n\nTarget attendance: ${profile.targetAttendance || 75}%. Attend risky subjects before skipping any class.`
-        : `Attendance looks safe. Average attendance is ${attendanceAverage || 0}%. Keep updating conducted and attended classes weekly.`;
-    } else if (question.includes("internal") || question.includes("marks") || question.includes("cia") || question.includes("skill")) {
-      response = `Internal marks intelligence:\n\n• Subjects tracked: ${internalSubjects.length}\n• Current performance: ${internalAverage || 0}%\n• Subjects needing updates: ${missingInternals.length}\n\n${missingInternals.length ? `Update ${missingInternals[0].name} first. Keep not-conducted items red and pending marks yellow.` : "All tracked internal components look updated."}`;
-    } else if (question.includes("calendar") || question.includes("exam") || question.includes("deadline")) {
+    const myUploadedNotes = notes.filter((note) => note.userId === user.uid);
+    const myPendingRequests = noteRequests.filter((item) => item.userId === user.uid && !item.fulfilled);
+    const fulfilledRequests = noteRequests.filter((item) => item.userId === user.uid && item.fulfilled);
+    const matchingNotes = notes.filter((note) => {
+      const haystack = `${note.title || ""} ${note.subject || ""} ${note.unit || ""} ${note.description || ""}`.toLowerCase();
+      return question.split(" ").some((word) => word.length > 3 && haystack.includes(word));
+    }).slice(0, 5);
+
+    const myLeaderboardRow = leaderboard.find((item) => item.id === user.uid || item.uid === user.uid);
+    const myRank = myLeaderboardRow?.rank || "Not ranked yet";
+    const unreadCount = unreadNotificationCount || 0;
+
+    const myOpportunities = opportunities.filter((item) => item.userId === user.uid);
+    const relevantOpportunities = opportunities.filter((item) => {
+      const departmentMatch = profile?.department && String(item.department || "").toLowerCase() === String(profile.department).toLowerCase();
+      const collegeMatch = profile?.college && String(item.college || "").toLowerCase() === String(profile.college).toLowerCase();
+      const typeMatch = ["internship", "project", "hackathon", "event", "team"].some((type) => question.includes(type) && String(item.type || "").toLowerCase().includes(type));
+      return departmentMatch || collegeMatch || typeMatch;
+    }).slice(0, 5);
+
+    const missionTodo = dailyMissionsV2.filter((mission) => !dailyMissionData?.completed?.[mission.id]);
+    const defeatedBossCount = bossBattleHistory.filter((item) => item.won).length;
+
+    const summary = `Hi ${studentName} 👋
+
+I know your Student OS memory:
+
+• Smart Health: ${smartHealth || 0}%
+• Attendance Average: ${attendanceAverage || 0}%
+• Internal Performance: ${internalAverage || 0}%
+• XP: ${xp}
+• Career Stage: ${careerStage?.emoji || "🎓"} ${careerStage?.name || "Learner"}
+• Rank: ${myRank}
+• Streak: ${streak} day${streak === 1 ? "" : "s"}
+• Pending Reminders: ${pendingReminderCount}
+• Today's Missions: ${completedDailyMissionCount}/${dailyMissionsV2.length}
+• Uploaded Notes: ${myUploadedNotes.length}
+• Pending Note Requests: ${myPendingRequests.length}
+• Opportunities Posted: ${myOpportunities.length}
+• Bosses Defeated: ${defeatedBossCount}
+• Notifications: ${unreadCount} unread
+
+Best next move: ${
+      riskyAttendance.length
+        ? `fix ${riskyAttendance[0].subject} attendance first`
+        : missingInternals.length
+          ? `update internals for ${missingInternals[0].name}`
+          : pendingTasks.length
+            ? `complete "${pendingTasks[0].title}"`
+            : missionTodo.length
+              ? `finish daily mission: ${missionTodo[0].title}`
+              : "start one focus session or help a notes request"
+    }.`;
+
+    if (!question) {
+      completeDailyMission("askAI", 0, false);
+      return setAiAnswer(`${summary}
+
+Try asking:
+• Can I skip class?
+• What should I study today?
+• Which subject is risky?
+• What notes should I revise?
+• How can I improve my rank?
+• What opportunity fits me?`);
+    }
+
+    let response = summary;
+
+    if (question.includes("skip") || question.includes("miss") || question.includes("bunk") || question.includes("leave") || question.includes("attendance")) {
+      if (!attendanceItems.length) {
+        response = `Attendance memory is empty.
+
+Add your subjects with attended/conducted classes first. Then I can tell you:
+• Whether you can skip
+• How many classes you can miss
+• Which subject is risky
+• How many classes to attend to reach your target.`;
+      } else {
+        response = `Attendance Decision:
+
+${attendanceItems.map((item) => {
+          const percent = getAttendancePercent(item);
+          const target = Number(item.target || profile.targetAttendance || 75);
+          const status = percent >= target ? "✅ Safe" : "⚠️ Risk";
+          return `• ${item.subject}: ${percent}% (${status}) — ${getAttendanceAdvice(item)}`;
+        }).join("\n")}
+
+My recommendation:
+${lowestAttendance ? `Do not skip ${lowestAttendance.subject} because it is your lowest subject at ${getAttendancePercent(lowestAttendance)}%.` : "Update attendance to get a clear decision."}
+
+Overall attendance average: ${attendanceAverage || 0}%.`;
+      }
+    } else if (question.includes("today") || question.includes("plan") || question.includes("study") || question.includes("what should")) {
+      response = `Today's Smart Study Plan for ${studentName}:
+
+1. ${riskyAttendance.length ? `Attend/track ${riskyAttendance[0].subject} first — attendance is ${getAttendancePercent(riskyAttendance[0])}%.` : "Attendance is not the biggest risk today."}
+
+2. ${weakestInternal ? `Study ${weakestInternal.name} because it has your weakest internal performance: ${weakestInternal.performance}%.` : "Add internal subjects to detect weak areas."}
+
+3. ${pendingTasks.length ? `Clear this reminder: ${pendingTasks[0].title} (${getReminderStatus(pendingTasks[0].date).label}).` : "No urgent reminder is blocking you."}
+
+4. ${missionTodo.length ? `Finish daily mission: ${missionTodo[0].emoji} ${missionTodo[0].title}.` : "All daily missions are complete. Claim your bonus if available."}
+
+5. ${nextAcademicEvent ? `Prepare for ${nextAcademicEvent.type}: ${nextAcademicEvent.title} — ${getEventStatus(nextAcademicEvent.date).label}.` : "Add upcoming exams/events to improve AI planning."}
+
+Suggested focus:
+${weakestInternal?.name || lowestAttendance?.subject || nextAcademicEvent?.subject || "One 25-minute focused revision session"}.`;
+    } else if (question.includes("internal") || question.includes("marks") || question.includes("cia") || question.includes("skill") || question.includes("external")) {
+      response = `Internal Marks Intelligence:
+
+• Subjects tracked: ${internalSubjects.length}
+• Average internal performance: ${internalAverage || 0}%
+• Subjects needing update: ${missingInternals.length}
+
+${completedInternalSubjects.length ? completedInternalSubjects.map((subject) => `• ${subject.name}: ${subject.performance}% ${missingInternals.some((item) => item.id === subject.id) ? "(pending components)" : "(updated)"}`).join("\n") : "No internal subjects added yet."}
+
+Recommendation:
+${weakestInternal ? `Focus on ${weakestInternal.name} first. It is currently your weakest subject at ${weakestInternal.performance}%.` : "Add CIA/Skill/Model Lab components so I can calculate weak subjects."}`;
+    } else if (question.includes("exam") || question.includes("calendar") || question.includes("deadline") || question.includes("event")) {
       response = nearestEvents.length
-        ? `Upcoming academic events:\n\n${nearestEvents.map((e, i) => `${i + 1}. ${e.priority === "High" ? "🔴" : e.priority === "Medium" ? "🟠" : "🟢"} ${e.type}: ${e.title} — ${getEventStatus(e.date).label}`).join("\n")}\n\nPlan your next focus session around the nearest high-priority event.`
-        : "No academic events added yet. Add CIA, skill, assignment, lab or end-semester dates.";
-    } else if (question.includes("reminder") || question.includes("task")) {
-      response = pendingTasks.length
-        ? `Pending reminders:\n\n${pendingTasks.map((item, index) => `${index + 1}. ${item.title} — ${getReminderStatus(item.date).label}`).join("\n")}\n\nComplete the nearest task first, then start one focus session.`
-        : "No pending reminders. Add upcoming assignments, exams, and lab records to stay safe.";
-    } else if (question.includes("stress") || question.includes("tired")) {
-      response = `Light recovery plan for ${studentName}:\n\n1. Do one 25-minute focus session only.\n2. Clear one urgent reminder if any.\n3. Do not start too many new topics.\n4. Keep your streak alive, but don't overload yourself.\n\nSmart Health: ${smartHealth}%.`;
-    } else if (question.includes("semester") || question.includes("gpa")) {
-      response = `Semester health:\n\n• Current GPA: ${currentGpa}\n• Target GPA: ${targetGpa}\n• Attendance: ${attendanceAverage || 0}%\n• Internals: ${internalAverage || 0}%\n• Smart Health: ${smartHealth}%\n\n${smartHealth < 75 ? "Focus on attendance risk, incomplete internals, and urgent reminders first." : "You are on track. Keep the rhythm with daily focus sessions."}`;
+        ? `Upcoming Academic Timeline:
+
+${nearestEvents.map((event, index) => `${index + 1}. ${event.priority === "High" ? "🔴" : event.priority === "Medium" ? "🟠" : "🟢"} ${event.type}: ${event.title}${event.subject ? ` (${event.subject})` : ""} — ${getEventStatus(event.date).label}`).join("\n")}
+
+Best action:
+${nearestHighPriorityEvent ? `Prepare for high-priority event: ${nearestHighPriorityEvent.title}.` : `Start with the nearest event: ${nearestEvents[0].title}.`}`
+        : "No academic events added yet. Add CIA, assignment, lab, project review, and end-sem dates so I can plan your study schedule.";
+    } else if (question.includes("note") || question.includes("notes") || question.includes("pdf") || question.includes("request")) {
+      response = `Notes Hub Memory:
+
+• Your uploaded notes: ${myUploadedNotes.length}
+• Your pending requests: ${myPendingRequests.length}
+• Fulfilled requests: ${fulfilledRequests.length}
+• Notes matching this question: ${matchingNotes.length}
+
+${matchingNotes.length ? `Relevant notes found:\n${matchingNotes.map((note, index) => `${index + 1}. ${note.title || "Untitled"} — ${note.subject || "Subject"} ${note.unit ? `(${note.unit})` : ""}`).join("\n")}` : "No direct matching notes found from your question."}
+
+Recommendation:
+${myPendingRequests.length ? `You still have pending request: ${myPendingRequests[0].subject || "Requested notes"} ${myPendingRequests[0].unit ? `(${myPendingRequests[0].unit})` : ""}.` : "Search Notes Hub first. If not found, create a request so other students can help."}`;
+    } else if (question.includes("rank") || question.includes("leaderboard") || question.includes("xp") || question.includes("mission") || question.includes("level")) {
+      response = `Rank & Growth Plan:
+
+• Current rank: ${myRank}
+• XP: ${xp}
+• Career Stage: ${careerStage?.emoji || "🎓"} ${careerStage?.name || "Learner"}
+• Career progress: ${careerProgress}%
+• Daily missions: ${completedDailyMissionCount}/${dailyMissionsV2.length}
+• Streak: ${streak}
+• Achievements unlocked: ${achievements.length}
+
+Fastest ways to improve:
+1. Complete all daily missions.
+2. Finish one focus session.
+3. Upload or fulfill notes.
+4. Defeat one topic boss.
+5. Keep attendance and internals updated.
+
+Next mission:
+${missionTodo.length ? `${missionTodo[0].emoji} ${missionTodo[0].title} (+${missionTodo[0].xp} XP)` : "All missions complete. Claim bonus if available."}`;
+    } else if (question.includes("opportunity") || question.includes("internship") || question.includes("project") || question.includes("hackathon") || question.includes("team")) {
+      response = `Opportunities Memory:
+
+• Opportunities available: ${opportunities.length}
+• Your posts: ${myOpportunities.length}
+• Relevant opportunities for you: ${relevantOpportunities.length}
+
+${relevantOpportunities.length ? relevantOpportunities.map((item, index) => `${index + 1}. ${item.type}: ${item.title} — ${item.college || "Student OS"}`).join("\n") : "No highly relevant opportunity found yet."}
+
+Recommendation:
+${profile?.department ? `Watch ${profile.department} opportunities and project/team posts.` : "Add your department in profile to improve recommendations."}
+${myOpportunities.length ? "You have already started contributing to the opportunities network." : "Post one project/team requirement to attract useful connections."}`;
+    } else if (question.includes("career") || question.includes("portfolio") || question.includes("skill") || question.includes("resume")) {
+      const skills = profile?.skills || [];
+      const projects = profile?.projects || [];
+      response = `Career & Portfolio Memory:
+
+• Career Stage: ${careerStage?.emoji || "🎓"} ${careerStage?.name || "Learner"}
+• Skills added: ${skills.length}
+• Projects added: ${projects.length}
+• GitHub: ${profile?.github ? "Added" : "Missing"}
+• LinkedIn: ${profile?.linkedin ? "Added" : "Missing"}
+• Resume: ${profile?.resumeLink ? "Added" : "Missing"}
+
+Next improvement:
+${!profile?.github ? "Add GitHub link." : !profile?.linkedin ? "Add LinkedIn link." : !profile?.resumeLink ? "Add resume link." : projects.length === 0 ? "Add at least one project." : skills.length < 5 ? "Add more skills." : "Your profile is strong. Keep adding projects and achievements."}`;
+    } else if (question.includes("stress") || question.includes("tired") || question.includes("overwhelmed")) {
+      response = `Recovery Mode Plan:
+
+You do not need to do everything today.
+
+1. Do one 25-minute focus session only.
+2. Clear one urgent reminder${pendingTasks.length ? `: ${pendingTasks[0].title}` : "."}
+3. Avoid starting too many new topics.
+4. Keep your streak alive with a small action.
+5. If attendance is risky, prioritize attending class over extra tasks.
+
+Current Smart Health: ${smartHealth || 0}%.
+${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are okay. Keep momentum without overload."}`;
     }
 
     completeDailyMission("askAI", 0, false);
@@ -3785,9 +3974,9 @@ function RemindersPage({ isDark, cardClass, inputClass, reminderTitle, setRemind
 function AIPage({ aiQuestion, setAiQuestion, aiAnswer, handleAskAI, xp, streak, attendanceAverage, internalAverage, semesterHealth, smartHealth, profile, pendingReminderCount, upcomingWeekEvents }) {
   return (
     <section className="mt-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white p-6 rounded-3xl shadow-2xl border border-white/10">
-      <div className="flex items-center gap-3"><motion.div animate={{ rotate: [0, 8, -8, 0] }} transition={{ repeat: Infinity, duration: 4 }} className="bg-white/10 p-3 rounded-2xl"><Bot size={28} /></motion.div><div><h2 className="text-2xl font-bold">AI Study Companion</h2><p className="text-indigo-200 text-sm">Uses XP, streak, attendance, internals, reminders, calendar, and semester health.</p></div></div>
+      <div className="flex items-center gap-3"><motion.div animate={{ rotate: [0, 8, -8, 0] }} transition={{ repeat: Infinity, duration: 4 }} className="bg-white/10 p-3 rounded-2xl"><Bot size={28} /></motion.div><div><h2 className="text-2xl font-bold">AI Study Companion</h2><p className="text-indigo-200 text-sm">Knows your attendance, internals, calendar, notes, rank, missions, portfolio, and opportunities.</p></div></div>
       <div className="grid lg:grid-cols-[1fr_1.1fr] gap-5 mt-5">
-        <div><textarea value={aiQuestion} onChange={(e) => setAiQuestion(e.target.value)} placeholder="Ask: I have exam tomorrow, attendance risk, internal marks..." className="w-full h-36 rounded-2xl p-4 bg-white/10 border border-white/20 text-white placeholder:text-indigo-200 outline-none focus:ring-2 focus:ring-yellow-300" /><div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">{["Exam tomorrow", "Attendance risk", "Internal marks", "Semester health"].map((item) => <button key={item} onClick={() => setAiQuestion(item)} className="bg-white/10 hover:bg-white/20 text-sm py-2 rounded-xl transition">{item}</button>)}</div><button onClick={handleAskAI} className="mt-3 w-full bg-yellow-400 text-black font-bold px-6 py-3 rounded-xl shadow-lg hover:bg-yellow-300 transition">Ask AI Companion</button></div>
+        <div><textarea value={aiQuestion} onChange={(e) => setAiQuestion(e.target.value)} placeholder="Ask: Can I skip class? What should I study today? Which notes should I revise? How can I improve my rank?" className="w-full h-36 rounded-2xl p-4 bg-white/10 border border-white/20 text-white placeholder:text-indigo-200 outline-none focus:ring-2 focus:ring-yellow-300" /><div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">{["What should I study today?", "Can I skip class?", "Notes to revise", "Improve my rank", "Career plan", "Opportunities for me"].map((item) => <button key={item} onClick={() => setAiQuestion(item)} className="bg-white/10 hover:bg-white/20 text-sm py-2 rounded-xl transition">{item}</button>)}</div><button onClick={handleAskAI} className="mt-3 w-full bg-yellow-400 text-black font-bold px-6 py-3 rounded-xl shadow-lg hover:bg-yellow-300 transition">Ask AI Companion</button></div>
         <motion.div key={aiAnswer} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="bg-white text-slate-900 p-5 rounded-2xl shadow-xl max-h-96 overflow-auto"><p className="text-sm font-bold text-indigo-600 mb-2">AI Response</p><p className="whitespace-pre-line leading-relaxed text-gray-700 text-sm">{aiAnswer}</p></motion.div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5"><Metric label="XP" value={xp} /><Metric label="Streak" value={streak} /><Metric label="Smart Health" value={`${smartHealth || 0}%`} /><Metric label="Pending" value={pendingReminderCount || 0} /></div>
