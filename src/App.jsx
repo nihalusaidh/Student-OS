@@ -2726,26 +2726,25 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
       <GameRoom
         mode="archery"
         questions={studyGameQuestions}
-        topic={studyGameTopic || "Study Topic"}
+        topic={studyGameTopic}
         onExit={() => {
           setStudyGameStarted(false);
-          setStudyGameMode("quiz");
           setStudyGameFeedback("");
         }}
-        onReward={({ xp, coins, score, total }) => {
+        onReward={({ xp: rewardXp, coins, score, total }) => {
           setStudyGameScore(score);
-          addXp(xp);
+          addXp(rewardXp);
           setStudyCoins((prev) => prev + coins);
           unlockAchievement(
             "study-games-first",
             "Study Gamer",
             "🎮",
-            `You completed Archery Arena and earned +${xp} XP.`,
+            `You completed Archery Pro and earned +${rewardXp} XP.`,
             "toast"
           );
           showToast(
             "Archery Complete",
-            `Score ${score}/${total}. +${xp} XP · +${coins} coins`,
+            `Score ${score}/${total}. +${rewardXp} XP · +${coins} coins`,
             "🏹"
           );
         }}
