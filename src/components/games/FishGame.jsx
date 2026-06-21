@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame_OceanSurvival_Advanced_V3
+ * FishGame_OceanSurvival_SeparatePage_V4
  * Path: src/components/games/FishGame.jsx
  *
  * Advanced landscape survival loop:
@@ -644,33 +644,22 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
 
   return (
     <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white">
-      <div className="portrait-warning flex h-screen w-screen items-center justify-center bg-slate-950 p-6 text-center text-white landscape:hidden">
-        <div className="max-w-sm rounded-3xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
-          <div className="text-6xl">📱↔️</div>
-          <h1 className="mt-4 text-2xl font-black">Rotate Your Phone</h1>
-          <p className="mt-3 text-slate-300">Ocean Survival is designed like a real game. Turn your phone to landscape mode for best gameplay.</p>
-          <button onClick={onExit} className="mt-6 rounded-2xl bg-red-500 px-5 py-3 font-bold text-white hover:bg-red-600">Exit Game</button>
-        </div>
-      </div>
+      <div className="relative h-[100dvh] w-screen overflow-hidden bg-slate-950">
+        <div ref={containerRef} className="h-full w-full bg-slate-950" />
 
-      <div className="hidden h-screen w-screen flex-col landscape:flex">
-        <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-black sm:text-3xl">🐟 Ocean Survival Advanced</h1>
-            <p className="text-xs text-slate-400 sm:text-sm">{topic || "Study Topic"} · large ocean map · predators · minimap · powerups</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold sm:text-sm">Score: {hud.score}</div>
-            <div className="rounded-xl bg-green-400/10 px-3 py-2 text-xs font-bold text-green-300 sm:text-sm">Health: {Math.round(hud.health)}</div>
-            <div className="rounded-xl bg-blue-400/10 px-3 py-2 text-xs font-bold text-blue-300 sm:text-sm">Combo: {hud.combo}</div>
-            <div className="rounded-xl bg-purple-400/10 px-3 py-2 text-xs font-bold text-purple-300 sm:text-sm">Level: {hud.level}</div>
-            <div className="rounded-xl bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-300 sm:text-sm">Shield: {hud.shield}</div>
-            <div className="rounded-xl bg-yellow-400/10 px-3 py-2 text-xs font-bold text-yellow-300 sm:text-sm">Q: {hud.current}/{hud.total}</div>
-            <button onClick={onExit} className="rounded-xl bg-red-500 px-4 py-2 text-xs font-bold text-white hover:bg-red-600 sm:text-sm">Exit</button>
-          </div>
+        <button
+          onClick={onExit}
+          className="absolute right-3 top-3 z-[100000] rounded-xl bg-red-500 px-4 py-2 text-xs font-black text-white shadow-2xl hover:bg-red-600 sm:right-4 sm:top-4 sm:px-5 sm:py-3 sm:text-sm"
+        >
+          Exit
+        </button>
+
+        <div className="pointer-events-none absolute left-3 top-3 z-[100000] max-w-[58vw] rounded-2xl bg-slate-950/70 px-3 py-2 shadow-2xl backdrop-blur sm:left-4 sm:top-4 sm:max-w-[520px]">
+          <h1 className="text-sm font-black leading-tight sm:text-xl">🐟 Ocean Survival</h1>
+          <p className="mt-1 truncate text-[10px] font-semibold text-slate-300 sm:text-xs">
+            {topic || "Study Topic"} · eat ⭐ answer fish · avoid ☠ predators
+          </p>
         </div>
-        <div className="border-b border-slate-800 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200">{hud.message}</div>
-        <div ref={containerRef} className="h-full min-h-0 w-full flex-1 bg-slate-900" />
       </div>
     </div>
   );
