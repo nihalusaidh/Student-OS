@@ -273,9 +273,6 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
           p.body.setCollideWorldBounds(true);
           this.predators.push(p);
         }
-      }
-
-
 
         const boss = this.makeFish(WORLD_W * 0.78, WORLD_H * 0.2, 0x111827, "🦈", 1.55);
         boss.damage = 18;
@@ -286,6 +283,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         boss.body.setCollideWorldBounds(true);
         boss.setDepth(51);
         this.predators.push(boss);
+      }
 
       createCoins() {
         for (let i = 0; i < 22; i++) {
