@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V6 - True Fullscreen Mobile Joystick
+ * FishGame V6.1 - True Responsive Fullscreen
  * Path: src/components/games/FishGame.jsx
  *
  * Goal:
@@ -56,13 +56,16 @@ export default function FishGame({
 
     const safeQuestions = questionsRef.current?.length ? questionsRef.current : fallbackQuestions;
 
+    const screenW = Math.max(window.innerWidth || 960, 360);
+    const screenH = Math.max(window.innerHeight || 540, 240);
+
     const isMobileDevice =
       window.matchMedia("(pointer: coarse)").matches ||
-      window.innerWidth <= 900 ||
-      window.innerHeight <= 600;
+      screenW <= 950 ||
+      screenH <= 650;
 
-    const GAME_W = 1600;
-    const GAME_H = 900;
+    const GAME_W = screenW;
+    const GAME_H = screenH;
     const WORLD_W = 3400;
     const WORLD_H = 1900;
 
@@ -107,15 +110,15 @@ export default function FishGame({
         this.map = null;
         this.exitButton = null;
         this.loadingPanel = null;
+
         this.joyBase = null;
         this.joyKnob = null;
-        this.joyText = null;
         this.joystickActive = false;
         this.joystickPointerId = null;
         this.joystickVector = new Phaser.Math.Vector2(0, 0);
-        this.joyCenterX = 150;
-        this.joyCenterY = GAME_H - 150;
-        this.joyRadius = 78;
+        this.joyRadius = Math.max(54, Math.min(82, GAME_W * 0.07));
+        this.joyCenterX = Math.max(90, GAME_W * 0.12);
+        this.joyCenterY = Math.max(150, GAME_H * 0.78);
 
         this.lastMiniMapUpdate = 0;
         this.lastHudUpdate = 0;
@@ -140,17 +143,17 @@ export default function FishGame({
 
         this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
 
-        this.input.on("pointermove", (p) => this.handlePointerMove(p));
         this.input.on("pointerdown", (p) => this.handlePointerDown(p));
+        this.input.on("pointermove", (p) => this.handlePointerMove(p));
         this.input.on("pointerup", (p) => this.handlePointerUp(p));
         this.input.on("pointerupoutside", (p) => this.handlePointerUp(p));
 
         if (isMobileDevice) this.createGlassJoystick();
 
-        this.time.delayedCall(1200, () => {
+        this.time.delayedCall(1000, () => {
           gameReady = true;
           this.hideLoadingScreen();
-          this.setMessage(isMobileDevice ? "Use the glass joystick to move. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
+          this.setMessage(isMobileDevice ? "Use joystick to move. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
         });
 
         this.time.addEvent({
@@ -204,7 +207,7 @@ export default function FishGame({
 
         if (isMobileDevice) {
           const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.joyCenterX, this.joyCenterY);
-          if (dist <= this.joyRadius * 1.7) {
+          if (dist <= this.joyRadius * 1.9) {
             this.joystickActive = true;
             this.joystickPointerId = pointer.id;
             this.updateJoystick(pointer);
@@ -239,30 +242,33 @@ export default function FishGame({
             targets: this.joyKnob,
             x: this.joyCenterX,
             y: this.joyCenterY,
-            duration: 130,
+            duration: 120,
             ease: "Sine.out",
           });
         }
       }
 
       updateJoystick(pointer) {
+        if (!this.joyKnob) return;
+
         const dx = pointer.x - this.joyCenterX;
         const dy = pointer.y - this.joyCenterY;
         const len = Math.sqrt(dx * dx + dy * dy);
+
+        if (len < 8) {
+          this.joystickVector.set(0, 0);
+          this.joyKnob.x = this.joyCenterX;
+          this.joyKnob.y = this.joyCenterY;
+          return;
+        }
+
         const clamped = Math.min(len, this.joyRadius);
         const angle = Math.atan2(dy, dx);
 
-        const knobX = this.joyCenterX + Math.cos(angle) * clamped;
-        const knobY = this.joyCenterY + Math.sin(angle) * clamped;
+        this.joyKnob.x = this.joyCenterX + Math.cos(angle) * clamped;
+        this.joyKnob.y = this.joyCenterY + Math.sin(angle) * clamped;
 
-        this.joyKnob.x = knobX;
-        this.joyKnob.y = knobY;
-
-        if (len > 8) {
-          this.joystickVector.set(Math.cos(angle), Math.sin(angle));
-        } else {
-          this.joystickVector.set(0, 0);
-        }
+        this.joystickVector.set(Math.cos(angle), Math.sin(angle));
       }
 
       updateTargetFromPointer(pointer) {
@@ -276,11 +282,13 @@ export default function FishGame({
         this.loadingPanel = this.add.container(GAME_W / 2, GAME_H / 2).setScrollFactor(0).setDepth(900);
 
         const bg = this.add.rectangle(0, 0, GAME_W, GAME_H, 0x020617, 0.92);
-        const card = this.add.rectangle(0, 0, 620, 260, 0x0f172a, 0.96);
+        const cardW = Math.min(620, GAME_W * 0.82);
+        const cardH = Math.min(250, GAME_H * 0.55);
+        const card = this.add.rectangle(0, 0, cardW, cardH, 0x0f172a, 0.96);
         card.setStrokeStyle(3, 0x38bdf8, 0.55);
 
-        const title = this.add.text(0, -76, "🌊 LOADING OCEAN", {
-          fontSize: "42px",
+        const title = this.add.text(0, -cardH * 0.25, "🌊 LOADING OCEAN", {
+          fontSize: Math.max(24, Math.min(42, GAME_W * 0.032)) + "px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
@@ -288,21 +296,21 @@ export default function FishGame({
           strokeThickness: 7,
         }).setOrigin(0.5);
 
-        const sub = this.add.text(0, -15, "Preparing fish, predators, map and powerups...", {
-          fontSize: "20px",
+        const sub = this.add.text(0, 0, "Preparing smooth fullscreen mode...", {
+          fontSize: Math.max(14, Math.min(20, GAME_W * 0.016)) + "px",
           color: "#cbd5e1",
           fontFamily: "Arial",
         }).setOrigin(0.5);
 
-        const barBack = this.add.rectangle(0, 52, 440, 18, 0x020617, 1);
-        const bar = this.add.rectangle(-220, 52, 0, 12, 0x38bdf8, 1).setOrigin(0, 0.5);
+        const barBack = this.add.rectangle(0, cardH * 0.25, cardW * 0.68, 16, 0x020617, 1);
+        const bar = this.add.rectangle(-(cardW * 0.34), cardH * 0.25, 0, 10, 0x38bdf8, 1).setOrigin(0, 0.5);
 
         this.loadingPanel.add([bg, card, title, sub, barBack, bar]);
 
         this.tweens.add({
           targets: bar,
-          width: 440,
-          duration: 1100,
+          width: cardW * 0.68,
+          duration: 900,
           ease: "Sine.out",
         });
       }
@@ -312,7 +320,7 @@ export default function FishGame({
         this.tweens.add({
           targets: this.loadingPanel,
           alpha: 0,
-          duration: 280,
+          duration: 220,
           onComplete: () => {
             this.loadingPanel.destroy();
             this.loadingPanel = null;
@@ -323,17 +331,17 @@ export default function FishGame({
       createGlassJoystick() {
         const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(650);
 
-        this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.16);
-        this.joyBase.setStrokeStyle(4, 0x38bdf8, 0.48);
+        this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.17);
+        this.joyBase.setStrokeStyle(4, 0x38bdf8, 0.55);
 
-        const inner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.06);
-        inner.setStrokeStyle(2, 0xffffff, 0.25);
+        const inner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.07);
+        inner.setStrokeStyle(2, 0xffffff, 0.28);
 
-        this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, 34, 0xffffff, 0.36);
+        this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.42, 0xffffff, 0.35);
         this.joyKnob.setStrokeStyle(4, 0x67e8f9, 0.85);
 
-        this.joyText = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 25, "MOVE", {
-          fontSize: "15px",
+        const label = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, "MOVE", {
+          fontSize: Math.max(11, GAME_W * 0.011) + "px",
           color: "#bae6fd",
           fontFamily: "Arial",
           fontStyle: "bold",
@@ -341,11 +349,11 @@ export default function FishGame({
           strokeThickness: 4,
         }).setOrigin(0.5);
 
-        layer.add([this.joyBase, inner, this.joyKnob, this.joyText]);
+        layer.add([this.joyBase, inner, this.joyKnob, label]);
 
         this.tweens.add({
           targets: this.joyBase,
-          alpha: 0.25,
+          alpha: 0.26,
           scaleX: 1.05,
           scaleY: 1.05,
           duration: 900,
@@ -612,14 +620,14 @@ export default function FishGame({
       createFixedHud() {
         const hud = this.add.container(0, 0).setScrollFactor(0).setDepth(500);
 
-        hud.add(this.add.rectangle(800, 34, 1600, 68, 0x020617, 0.76));
+        hud.add(this.add.rectangle(GAME_W / 2, 34, GAME_W, 68, 0x020617, 0.76));
 
         this.questionText = this.add.text(28, 16, "", {
           fontSize: "22px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
-          wordWrap: { width: 900 },
+          wordWrap: { width: Math.max(320, GAME_W * 0.56) },
           stroke: "#000000",
           strokeThickness: 5,
         });
@@ -632,18 +640,18 @@ export default function FishGame({
           fontStyle: "bold",
         };
 
-        this.hudScore = this.add.text(1040, 18, "Score: 0", pillStyle);
-        this.hudHealth = this.add.text(1160, 18, "Health: 100", { ...pillStyle, color: "#86efac" });
-        this.hudCombo = this.add.text(1300, 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
-        this.hudLevel = this.add.text(1420, 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
+        this.hudScore = this.add.text(GAME_W - 560, 18, "Score: 0", pillStyle);
+        this.hudHealth = this.add.text(GAME_W - 440, 18, "Health: 100", { ...pillStyle, color: "#86efac" });
+        this.hudCombo = this.add.text(GAME_W - 295, 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
+        this.hudLevel = this.add.text(GAME_W - 170, 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
 
         hud.add([this.hudScore, this.hudHealth, this.hudCombo, this.hudLevel]);
 
-        hud.add(this.add.rectangle(1340, 56, 310, 16, 0x0f172a, 0.95));
-        this.healthBar = this.add.rectangle(1185, 56, 310, 10, 0x22c55e, 1).setOrigin(0, 0.5);
+        hud.add(this.add.rectangle(GAME_W - 260, 56, 260, 16, 0x0f172a, 0.95));
+        this.healthBar = this.add.rectangle(GAME_W - 390, 56, 260, 10, 0x22c55e, 1).setOrigin(0, 0.5);
         hud.add(this.healthBar);
 
-        this.messageText = this.add.text(28, 74, "Preparing ocean...", {
+        this.messageText = this.add.text(28, 74, "Loading ocean...", {
           fontSize: "17px",
           color: "#cbd5e1",
           fontFamily: "Arial",
@@ -652,11 +660,11 @@ export default function FishGame({
           strokeThickness: 4,
         }).setScrollFactor(0).setDepth(501);
 
-        this.pointerStar = this.add.text(800, 124, "⭐", {
+        this.pointerStar = this.add.text(GAME_W / 2, 124, "⭐", {
           fontSize: "32px",
         }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
 
-        this.exitButton = this.add.text(1490, 82, "EXIT", {
+        this.exitButton = this.add.text(GAME_W - 75, 86, "EXIT", {
           fontSize: "18px",
           color: "#ffffff",
           fontFamily: "Arial",
@@ -673,7 +681,7 @@ export default function FishGame({
       }
 
       createMiniMap() {
-        this.map = this.add.container(1390, 160).setScrollFactor(0).setDepth(520);
+        this.map = this.add.container(GAME_W - 185, 160).setScrollFactor(0).setDepth(520);
 
         const bg = this.add.rectangle(0, 0, 310, 178, 0x020617, 0.72);
         bg.setStrokeStyle(2, 0x38bdf8, 0.55);
@@ -701,7 +709,7 @@ export default function FishGame({
         this.hudLevel.setText(`Lv: ${level}${shield > 0 ? ` 🛡${shield}` : ""}`);
 
         const ratio = Phaser.Math.Clamp(health / 100, 0, 1);
-        this.healthBar.width = 310 * ratio;
+        this.healthBar.width = 260 * ratio;
 
         if (health > 60) this.healthBar.setFillStyle(0x22c55e);
         else if (health > 30) this.healthBar.setFillStyle(0xfacc15);
@@ -727,25 +735,25 @@ export default function FishGame({
       }
 
       startRainbowAnswerFish(fish) {
-        const rainbow = [0xfacc15, 0x22c55e, 0x38bdf8, 0xa855f7, 0xec4899, 0xffffff];
-        let colorIndex = 0;
+        const colors = [0xfacc15, 0x22c55e, 0x38bdf8, 0xa855f7, 0xec4899, 0xffffff];
+        let index = 0;
 
         this.time.addEvent({
           delay: 180,
           loop: true,
           callback: () => {
             if (!fish.active || !fish.glow?.active) return;
-            colorIndex = (colorIndex + 1) % rainbow.length;
-            fish.glow.setFillStyle(rainbow[colorIndex], 0.36);
+            index = (index + 1) % colors.length;
+            fish.glow.setFillStyle(colors[index], 0.36);
           },
         });
 
         this.tweens.add({
           targets: fish.glow,
           alpha: 0.42,
-          scaleX: 1.3,
-          scaleY: 1.3,
-          duration: 620,
+          scaleX: 1.28,
+          scaleY: 1.28,
+          duration: 640,
           yoyo: true,
           repeat: -1,
         });
@@ -1188,7 +1196,7 @@ export default function FishGame({
         const xp = Math.max(20, Math.round(score / 2));
         const coins = Math.max(10, Math.round(score / 8));
 
-        const panel = this.add.container(800, 450).setScrollFactor(0).setDepth(700);
+        const panel = this.add.container(GAME_W / 2, GAME_H / 2).setScrollFactor(0).setDepth(700);
 
         const bg = this.add.rectangle(0, 0, 760, 410, 0x0f172a, 0.97);
         bg.setStrokeStyle(3, 0x38bdf8, 0.65);
@@ -1240,7 +1248,7 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-ocean-v6-fullscreen-joystick",
+            mode: "fish-ocean-v6-responsive-fullscreen",
           });
         }
       }
@@ -1261,9 +1269,8 @@ export default function FishGame({
         },
       },
       scale: {
-        mode: Phaser.Scale.ENVELOP,
+        mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        fullscreenTarget: containerRef.current,
       },
       render: {
         antialias: false,
@@ -1286,10 +1293,12 @@ export default function FishGame({
     <div
       className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white"
       style={{
+        width: "100vw",
+        height: "100vh",
         width: "100dvw",
         height: "100dvh",
-        maxWidth: "100dvw",
-        maxHeight: "100dvh",
+        margin: 0,
+        padding: 0,
         touchAction: "none",
         overscrollBehavior: "none",
         WebkitUserSelect: "none",
@@ -1300,12 +1309,12 @@ export default function FishGame({
         ref={containerRef}
         className="bg-slate-950"
         style={{
-          width: "100dvw",
-          height: "100dvh",
-          maxWidth: "100dvw",
-          maxHeight: "100dvh",
-          touchAction: "none",
+          width: "100%",
+          height: "100%",
+          margin: 0,
+          padding: 0,
           overflow: "hidden",
+          touchAction: "none",
         }}
       />
     </div>
