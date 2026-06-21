@@ -2731,7 +2731,7 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
           setStudyGameStarted(false);
           setStudyGameFeedback("");
         }}
-        onReward={({ xp: rewardXp, coins, score, total }) => {
+        onReward={({ xp: rewardXp = 0, coins = 0, score = 0, total = studyGameQuestions.length }) => {
           setStudyGameScore(score);
           addXp(rewardXp);
           setStudyCoins((prev) => prev + coins);
@@ -7008,17 +7008,21 @@ function StudyGamesPage({
     if (studyGameMode === "archery") {
       return (
         <div className={`rounded-3xl border p-4 md:p-6 ${arenaBg}`}>
-          <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <p className="text-4xl md:text-5xl">🏹</p>
-              <p className="font-black mt-1">Real Archery Arena</p>
+              <p className="text-5xl">🏹</p>
+              <p className="font-black mt-2 text-xl">Cinematic Archery Arena</p>
+              <p className="text-sm opacity-70 mt-1">
+                Opens as a full-screen Game Room with moving targets, 3 arrows, reload animation, combo scoring and XP rewards.
+              </p>
             </div>
-            <div className="text-right text-xs md:text-sm opacity-75">
-              <p>Mouse / touch supported</p>
-              <p>Drag backward, aim, release.</p>
-            </div>
+            <button
+              onClick={() => startStudyGame("archery")}
+              className="rounded-2xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 font-black shadow-lg"
+            >
+              Open Fullscreen Arena
+            </button>
           </div>
-          <RealArcheryArena question={currentQuestion} isDark={isDark} onAnswer={answerStudyGame} />
         </div>
       );
     }
