@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V6.3 - Mobile HUD Safe Area Fix
+ * FishGame V6.4 - Portrait Mobile Layout
  * Path: src/components/games/FishGame.jsx
  *
  * Goal:
@@ -64,16 +64,21 @@ export default function FishGame({
       screenW <= 950 ||
       screenH <= 650;
 
+    const isPortraitMobile = isMobileDevice && screenH > screenW;
+
     const GAME_W = screenW;
     const GAME_H = screenH;
     const WORLD_W = 3400;
     const WORLD_H = 1900;
 
-    // Mobile browser status bar / gesture bar safe spacing.
-    // Browser pages cannot hide the Android status bar unless installed as PWA/fullscreen,
-    // so we keep important UI away from top/bottom edges.
-    const SAFE_TOP = isMobileDevice ? Math.max(70, GAME_H * 0.10) : 0;
-    const SAFE_BOTTOM = isMobileDevice ? Math.max(34, GAME_H * 0.06) : 0;
+    // Portrait mobile gets a real phone-game layout:
+    // top HUD, center ocean, bottom joystick.
+    const SAFE_TOP = isMobileDevice ? Math.max(74, GAME_H * 0.11) : 0;
+    const SAFE_BOTTOM = isMobileDevice ? Math.max(40, GAME_H * 0.07) : 0;
+    const PORTRAIT_HUD_H = isPortraitMobile ? Math.max(145, GAME_H * 0.23) : 0;
+    const PORTRAIT_CONTROL_H = isPortraitMobile ? Math.max(150, GAME_H * 0.24) : 0;
+    const PLAY_TOP = isPortraitMobile ? PORTRAIT_HUD_H : 0;
+    const PLAY_BOTTOM = isPortraitMobile ? GAME_H - PORTRAIT_CONTROL_H : GAME_H;
 
     let gameReady = false;
 
@@ -122,9 +127,14 @@ export default function FishGame({
         this.joystickActive = false;
         this.joystickPointerId = null;
         this.joystickVector = new Phaser.Math.Vector2(0, 0);
-        this.joyRadius = Math.max(62, Math.min(88, GAME_W * 0.075));
-        this.joyCenterX = Math.max(105, GAME_W * 0.14);
-        this.joyCenterY = Math.min(GAME_H - SAFE_BOTTOM - this.joyRadius - 22, GAME_H * 0.76);
+        this.joyRadius = isPortraitMobile
+          ? Math.max(54, Math.min(76, GAME_W * 0.16))
+          : Math.max(62, Math.min(88, GAME_W * 0.075));
+
+        this.joyCenterX = isPortraitMobile ? GAME_W * 0.5 : Math.max(105, GAME_W * 0.14);
+        this.joyCenterY = isPortraitMobile
+          ? GAME_H - SAFE_BOTTOM - this.joyRadius - 24
+          : Math.min(GAME_H - SAFE_BOTTOM - this.joyRadius - 22, GAME_H * 0.76);
         this.dynamicJoy = true;
 
         this.lastMiniMapUpdate = 0;
@@ -160,7 +170,7 @@ export default function FishGame({
         this.time.delayedCall(1000, () => {
           gameReady = true;
           this.hideLoadingScreen();
-          this.setMessage(isMobileDevice ? "Touch anywhere on left side to move like joystick. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
+          this.setMessage(isMobileDevice ? "Use bottom joystick. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
         });
 
         this.time.addEvent({
@@ -213,18 +223,28 @@ export default function FishGame({
         if (ended) return;
 
         if (isMobileDevice) {
-          // BGMI-style floating joystick:
-          // wherever the user touches on the left side, joystick appears there.
-          if (pointer.x < GAME_W * 0.58 && pointer.y > SAFE_TOP + 20) {
-            this.joystickActive = true;
-            this.joystickPointerId = pointer.id;
-
-            this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 22, GAME_W * 0.52);
-            this.joyCenterY = Phaser.Math.Clamp(pointer.y, SAFE_TOP + this.joyRadius + 8, GAME_H - SAFE_BOTTOM - this.joyRadius - 18);
-
-            this.moveJoystickBase(this.joyCenterX, this.joyCenterY);
-            this.updateJoystick(pointer);
-            return;
+          if (isPortraitMobile) {
+            // Portrait mode: bottom area is control pad area.
+            if (pointer.y > PLAY_BOTTOM) {
+              this.joystickActive = true;
+              this.joystickPointerId = pointer.id;
+              this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 22, GAME_W - this.joyRadius - 22);
+              this.joyCenterY = Phaser.Math.Clamp(pointer.y, PLAY_BOTTOM + this.joyRadius + 8, GAME_H - SAFE_BOTTOM - this.joyRadius - 18);
+              this.moveJoystickBase(this.joyCenterX, this.joyCenterY);
+              this.updateJoystick(pointer);
+              return;
+            }
+          } else {
+            // Landscape mode: BGMI-style floating joystick on left side.
+            if (pointer.x < GAME_W * 0.58 && pointer.y > SAFE_TOP + 20) {
+              this.joystickActive = true;
+              this.joystickPointerId = pointer.id;
+              this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 22, GAME_W * 0.52);
+              this.joyCenterY = Phaser.Math.Clamp(pointer.y, SAFE_TOP + this.joyRadius + 8, GAME_H - SAFE_BOTTOM - this.joyRadius - 18);
+              this.moveJoystickBase(this.joyCenterX, this.joyCenterY);
+              this.updateJoystick(pointer);
+              return;
+            }
           }
         }
 
@@ -372,7 +392,7 @@ export default function FishGame({
         this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.43, 0xffffff, 0.44);
         this.joyKnob.setStrokeStyle(5, 0x67e8f9, 0.95);
 
-        this.joyLabel = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, "TOUCH LEFT SIDE", {
+        this.joyLabel = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, isPortraitMobile ? "JOYSTICK" : "TOUCH LEFT SIDE", {
           fontSize: Math.max(11, GAME_W * 0.011) + "px",
           color: "#bae6fd",
           fontFamily: "Arial",
@@ -652,59 +672,131 @@ export default function FishGame({
       createFixedHud() {
         const hud = this.add.container(0, 0).setScrollFactor(0).setDepth(500);
 
-        const hudY = SAFE_TOP + 32;
-        hud.add(this.add.rectangle(GAME_W / 2, hudY, GAME_W, 64, 0x020617, 0.74));
+        if (isPortraitMobile) {
+          // Top phone HUD
+          const topBg = this.add.rectangle(GAME_W / 2, PORTRAIT_HUD_H / 2, GAME_W, PORTRAIT_HUD_H, 0x020617, 0.84);
+          hud.add(topBg);
 
-        this.questionText = this.add.text(28, hudY - 20, "", {
-          fontSize: isMobileDevice ? "15px" : "22px",
-          color: "#ffffff",
-          fontFamily: "Arial",
-          fontStyle: "bold",
-          wordWrap: { width: Math.max(320, GAME_W * 0.56) },
-          stroke: "#000000",
-          strokeThickness: 5,
-        });
-        hud.add(this.questionText);
+          this.questionText = this.add.text(18, SAFE_TOP - 42, "", {
+            fontSize: Math.max(13, GAME_W * 0.043) + "px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            wordWrap: { width: GAME_W - 36 },
+            stroke: "#000000",
+            strokeThickness: 5,
+          });
+          hud.add(this.questionText);
 
-        const pillStyle = {
-          fontSize: isMobileDevice ? "13px" : "18px",
-          color: "#ffffff",
-          fontFamily: "Arial",
-          fontStyle: "bold",
-        };
+          const pillStyle = {
+            fontSize: Math.max(12, GAME_W * 0.034) + "px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+          };
 
-        this.hudScore = this.add.text(GAME_W - 560, hudY - 18, "Score: 0", pillStyle);
-        this.hudHealth = this.add.text(GAME_W - 440, hudY - 18, "Health: 100", { ...pillStyle, color: "#86efac" });
-        this.hudCombo = this.add.text(GAME_W - 295, hudY - 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
-        this.hudLevel = this.add.text(GAME_W - 170, hudY - 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
+          this.hudScore = this.add.text(18, SAFE_TOP + 2, "Score: 0", pillStyle);
+          this.hudHealth = this.add.text(GAME_W * 0.33, SAFE_TOP + 2, "HP: 100", { ...pillStyle, color: "#86efac" });
+          this.hudCombo = this.add.text(GAME_W * 0.58, SAFE_TOP + 2, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
+          this.hudLevel = this.add.text(GAME_W * 0.80, SAFE_TOP + 2, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
 
-        hud.add([this.hudScore, this.hudHealth, this.hudCombo, this.hudLevel]);
+          hud.add([this.hudScore, this.hudHealth, this.hudCombo, this.hudLevel]);
 
-        hud.add(this.add.rectangle(GAME_W - 260, hudY + 18, 260, 16, 0x0f172a, 0.95));
-        this.healthBar = this.add.rectangle(GAME_W - 390, hudY + 18, 260, 10, 0x22c55e, 1).setOrigin(0, 0.5);
-        hud.add(this.healthBar);
+          hud.add(this.add.rectangle(GAME_W / 2, SAFE_TOP + 38, GAME_W - 36, 16, 0x0f172a, 0.95));
+          this.healthBar = this.add.rectangle(18, SAFE_TOP + 38, GAME_W - 36, 10, 0x22c55e, 1).setOrigin(0, 0.5);
+          hud.add(this.healthBar);
 
-        this.messageText = this.add.text(28, 74, "Loading ocean...", {
-          fontSize: "17px",
-          color: "#cbd5e1",
-          fontFamily: "Arial",
-          fontStyle: "bold",
-          stroke: "#000000",
-          strokeThickness: 4,
-        }).setScrollFactor(0).setDepth(501);
+          this.messageText = this.add.text(18, SAFE_TOP + 56, "Preparing ocean...", {
+            fontSize: Math.max(11, GAME_W * 0.031) + "px",
+            color: "#cbd5e1",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            wordWrap: { width: GAME_W - 104 },
+            stroke: "#000000",
+            strokeThickness: 4,
+          }).setScrollFactor(0).setDepth(501);
 
-        this.pointerStar = this.add.text(GAME_W / 2, SAFE_TOP + 118, "⭐", {
-          fontSize: "32px",
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
+          this.exitButton = this.add.text(GAME_W - 54, SAFE_TOP + 58, "EXIT", {
+            fontSize: Math.max(12, GAME_W * 0.032) + "px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            backgroundColor: "#ef4444",
+            padding: { x: 10, y: 7 },
+          }).setOrigin(0.5).setScrollFactor(0).setDepth(540).setInteractive({ useHandCursor: true });
 
-        this.exitButton = this.add.text(GAME_W - 75, SAFE_TOP + 92, "EXIT", {
-          fontSize: isMobileDevice ? "13px" : "18px",
-          color: "#ffffff",
-          fontFamily: "Arial",
-          fontStyle: "bold",
-          backgroundColor: "#ef4444",
-          padding: { x: 14, y: 9 },
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(540).setInteractive({ useHandCursor: true });
+          // Bottom control strip
+          const bottomBg = this.add.rectangle(GAME_W / 2, PLAY_BOTTOM + PORTRAIT_CONTROL_H / 2, GAME_W, PORTRAIT_CONTROL_H, 0x020617, 0.70);
+          hud.add(bottomBg);
+
+          const hint = this.add.text(GAME_W / 2, PLAY_BOTTOM + 18, "Move joystick below • Chase ⭐ answer fish", {
+            fontSize: Math.max(11, GAME_W * 0.031) + "px",
+            color: "#bae6fd",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          }).setOrigin(0.5);
+          hud.add(hint);
+
+          this.pointerStar = this.add.text(GAME_W / 2, PLAY_TOP + 30, "⭐", {
+            fontSize: "28px",
+          }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
+        } else {
+          const hudY = SAFE_TOP + 32;
+          hud.add(this.add.rectangle(GAME_W / 2, hudY, GAME_W, 64, 0x020617, 0.74));
+
+          this.questionText = this.add.text(28, hudY - 20, "", {
+            fontSize: isMobileDevice ? "15px" : "22px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            wordWrap: { width: Math.max(320, GAME_W * 0.56) },
+            stroke: "#000000",
+            strokeThickness: 5,
+          });
+          hud.add(this.questionText);
+
+          const pillStyle = {
+            fontSize: isMobileDevice ? "13px" : "18px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+          };
+
+          this.hudScore = this.add.text(GAME_W - 560, hudY - 18, "Score: 0", pillStyle);
+          this.hudHealth = this.add.text(GAME_W - 440, hudY - 18, "Health: 100", { ...pillStyle, color: "#86efac" });
+          this.hudCombo = this.add.text(GAME_W - 295, hudY - 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
+          this.hudLevel = this.add.text(GAME_W - 170, hudY - 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
+
+          hud.add([this.hudScore, this.hudHealth, this.hudCombo, this.hudLevel]);
+
+          hud.add(this.add.rectangle(GAME_W - 260, hudY + 18, 260, 16, 0x0f172a, 0.95));
+          this.healthBar = this.add.rectangle(GAME_W - 390, hudY + 18, 260, 10, 0x22c55e, 1).setOrigin(0, 0.5);
+          hud.add(this.healthBar);
+
+          this.messageText = this.add.text(28, SAFE_TOP + 72, "Preparing ocean...", {
+            fontSize: "17px",
+            color: "#cbd5e1",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          }).setScrollFactor(0).setDepth(501);
+
+          this.pointerStar = this.add.text(GAME_W / 2, SAFE_TOP + 118, "⭐", {
+            fontSize: "32px",
+          }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
+
+          this.exitButton = this.add.text(GAME_W - 75, SAFE_TOP + 92, "EXIT", {
+            fontSize: "18px",
+            color: "#ffffff",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            backgroundColor: "#ef4444",
+            padding: { x: 14, y: 9 },
+          }).setOrigin(0.5).setScrollFactor(0).setDepth(540).setInteractive({ useHandCursor: true });
+        }
 
         this.exitButton.on("pointerdown", () => {
           if (typeof exitRef.current === "function") exitRef.current();
@@ -714,6 +806,23 @@ export default function FishGame({
       }
 
       createMiniMap() {
+        if (isPortraitMobile) {
+          this.map = this.add.container(GAME_W - 72, SAFE_TOP + 105).setScrollFactor(0).setDepth(520);
+
+          const bg = this.add.rectangle(0, 0, 118, 74, 0x020617, 0.72);
+          bg.setStrokeStyle(2, 0x38bdf8, 0.55);
+
+          const title = this.add.text(-50, -32, "MAP", {
+            fontSize: "10px",
+            color: "#93c5fd",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+          });
+
+          this.map.add([bg, title]);
+          return;
+        }
+
         this.map = this.add.container(GAME_W - 170, SAFE_TOP + 140).setScrollFactor(0).setDepth(520);
 
         const mapBoxW = isMobileDevice ? 230 : 310;
@@ -739,12 +848,12 @@ export default function FishGame({
         if (!this.hudScore) return;
 
         this.hudScore.setText(`Score: ${score}`);
-        this.hudHealth.setText(`Health: ${Math.round(health)}`);
+        this.hudHealth.setText(isPortraitMobile ? `HP: ${Math.round(health)}` : `Health: ${Math.round(health)}`);
         this.hudCombo.setText(`Combo: ${combo}`);
         this.hudLevel.setText(`Lv: ${level}${shield > 0 ? ` 🛡${shield}` : ""}`);
 
         const ratio = Phaser.Math.Clamp(health / 100, 0, 1);
-        this.healthBar.width = 260 * ratio;
+        this.healthBar.width = (isPortraitMobile ? GAME_W - 36 : 260) * ratio;
 
         if (health > 60) this.healthBar.setFillStyle(0x22c55e);
         else if (health > 30) this.healthBar.setFillStyle(0xfacc15);
@@ -1126,7 +1235,9 @@ export default function FishGame({
         const sy = correct.y - cam.scrollY;
 
         this.pointerStar.x = Phaser.Math.Clamp(sx, 70, cam.width - 70);
-        this.pointerStar.y = Phaser.Math.Clamp(sy, SAFE_TOP + 80, cam.height - SAFE_BOTTOM - 70);
+        this.pointerStar.y = isPortraitMobile
+          ? Phaser.Math.Clamp(sy, PLAY_TOP + 25, PLAY_BOTTOM - 35)
+          : Phaser.Math.Clamp(sy, SAFE_TOP + 80, cam.height - SAFE_BOTTOM - 70);
       }
 
       updateMiniMap() {
@@ -1135,8 +1246,8 @@ export default function FishGame({
         this.miniDots.forEach((d) => d.destroy());
         this.miniDots = [];
 
-        const mapW = isMobileDevice ? 230 : 310;
-        const mapH = isMobileDevice ? 132 : 178;
+        const mapW = isPortraitMobile ? 118 : (isMobileDevice ? 230 : 310);
+        const mapH = isPortraitMobile ? 74 : (isMobileDevice ? 132 : 178);
         const sx = mapW / WORLD_W;
         const sy = mapH / WORLD_H;
 
@@ -1283,7 +1394,7 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-ocean-v6-3-mobile-hud-safe",
+            mode: "fish-ocean-v6-4-portrait-layout",
           });
         }
       }
@@ -1340,25 +1451,6 @@ export default function FishGame({
         userSelect: "none",
       }}
     >
-      <div className="absolute inset-0 z-[100000] flex items-center justify-center bg-slate-950 p-6 text-center landscape:hidden">
-        <div className="max-w-sm rounded-3xl border border-cyan-400/40 bg-slate-900/95 p-7 shadow-2xl">
-          <div className="text-6xl">📱↔️</div>
-          <h1 className="mt-4 text-2xl font-black">Rotate Phone</h1>
-          <p className="mt-3 text-slate-300">
-            For the best Ocean Survival gameplay, rotate your phone to landscape mode.
-          </p>
-          <p className="mt-2 text-sm text-cyan-300">
-            Use the floating joystick anywhere on the left side.
-          </p>
-          <button
-            onClick={onExit}
-            className="mt-6 rounded-2xl bg-red-500 px-5 py-3 font-bold text-white hover:bg-red-600"
-          >
-            Exit Game
-          </button>
-        </div>
-      </div>
-
       <div
         ref={containerRef}
         className="bg-slate-950"
