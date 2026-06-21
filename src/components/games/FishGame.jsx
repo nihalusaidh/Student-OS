@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V6.2 - Mobile Dynamic Joystick
+ * FishGame V6.3 - Mobile HUD Safe Area Fix
  * Path: src/components/games/FishGame.jsx
  *
  * Goal:
@@ -69,6 +69,12 @@ export default function FishGame({
     const WORLD_W = 3400;
     const WORLD_H = 1900;
 
+    // Mobile browser status bar / gesture bar safe spacing.
+    // Browser pages cannot hide the Android status bar unless installed as PWA/fullscreen,
+    // so we keep important UI away from top/bottom edges.
+    const SAFE_TOP = isMobileDevice ? Math.max(70, GAME_H * 0.10) : 0;
+    const SAFE_BOTTOM = isMobileDevice ? Math.max(34, GAME_H * 0.06) : 0;
+
     let gameReady = false;
 
     let score = 0;
@@ -116,9 +122,9 @@ export default function FishGame({
         this.joystickActive = false;
         this.joystickPointerId = null;
         this.joystickVector = new Phaser.Math.Vector2(0, 0);
-        this.joyRadius = Math.max(54, Math.min(82, GAME_W * 0.07));
-        this.joyCenterX = Math.max(90, GAME_W * 0.12);
-        this.joyCenterY = Math.max(150, GAME_H * 0.78);
+        this.joyRadius = Math.max(62, Math.min(88, GAME_W * 0.075));
+        this.joyCenterX = Math.max(105, GAME_W * 0.14);
+        this.joyCenterY = Math.min(GAME_H - SAFE_BOTTOM - this.joyRadius - 22, GAME_H * 0.76);
         this.dynamicJoy = true;
 
         this.lastMiniMapUpdate = 0;
@@ -209,12 +215,12 @@ export default function FishGame({
         if (isMobileDevice) {
           // BGMI-style floating joystick:
           // wherever the user touches on the left side, joystick appears there.
-          if (pointer.x < GAME_W * 0.52 && pointer.y > GAME_H * 0.18) {
+          if (pointer.x < GAME_W * 0.58 && pointer.y > SAFE_TOP + 20) {
             this.joystickActive = true;
             this.joystickPointerId = pointer.id;
 
-            this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 18, GAME_W * 0.48);
-            this.joyCenterY = Phaser.Math.Clamp(pointer.y, GAME_H * 0.24, GAME_H - this.joyRadius - 18);
+            this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 22, GAME_W * 0.52);
+            this.joyCenterY = Phaser.Math.Clamp(pointer.y, SAFE_TOP + this.joyRadius + 8, GAME_H - SAFE_BOTTOM - this.joyRadius - 18);
 
             this.moveJoystickBase(this.joyCenterX, this.joyCenterY);
             this.updateJoystick(pointer);
@@ -357,14 +363,14 @@ export default function FishGame({
       createGlassJoystick() {
         const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(650);
 
-        this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.17);
-        this.joyBase.setStrokeStyle(4, 0x38bdf8, 0.55);
+        this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.24);
+        this.joyBase.setStrokeStyle(5, 0x38bdf8, 0.78);
 
-        this.joyInner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.07);
-        this.joyInner.setStrokeStyle(2, 0xffffff, 0.28);
+        this.joyInner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.10);
+        this.joyInner.setStrokeStyle(2, 0xffffff, 0.36);
 
-        this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.42, 0xffffff, 0.35);
-        this.joyKnob.setStrokeStyle(4, 0x67e8f9, 0.85);
+        this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.43, 0xffffff, 0.44);
+        this.joyKnob.setStrokeStyle(5, 0x67e8f9, 0.95);
 
         this.joyLabel = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, "TOUCH LEFT SIDE", {
           fontSize: Math.max(11, GAME_W * 0.011) + "px",
@@ -379,7 +385,7 @@ export default function FishGame({
 
         this.tweens.add({
           targets: this.joyBase,
-          alpha: 0.26,
+          alpha: 0.32,
           scaleX: 1.05,
           scaleY: 1.05,
           duration: 900,
@@ -646,10 +652,11 @@ export default function FishGame({
       createFixedHud() {
         const hud = this.add.container(0, 0).setScrollFactor(0).setDepth(500);
 
-        hud.add(this.add.rectangle(GAME_W / 2, 34, GAME_W, 68, 0x020617, 0.76));
+        const hudY = SAFE_TOP + 32;
+        hud.add(this.add.rectangle(GAME_W / 2, hudY, GAME_W, 64, 0x020617, 0.74));
 
-        this.questionText = this.add.text(28, 16, "", {
-          fontSize: "22px",
+        this.questionText = this.add.text(28, hudY - 20, "", {
+          fontSize: isMobileDevice ? "15px" : "22px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
@@ -660,21 +667,21 @@ export default function FishGame({
         hud.add(this.questionText);
 
         const pillStyle = {
-          fontSize: "18px",
+          fontSize: isMobileDevice ? "13px" : "18px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
         };
 
-        this.hudScore = this.add.text(GAME_W - 560, 18, "Score: 0", pillStyle);
-        this.hudHealth = this.add.text(GAME_W - 440, 18, "Health: 100", { ...pillStyle, color: "#86efac" });
-        this.hudCombo = this.add.text(GAME_W - 295, 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
-        this.hudLevel = this.add.text(GAME_W - 170, 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
+        this.hudScore = this.add.text(GAME_W - 560, hudY - 18, "Score: 0", pillStyle);
+        this.hudHealth = this.add.text(GAME_W - 440, hudY - 18, "Health: 100", { ...pillStyle, color: "#86efac" });
+        this.hudCombo = this.add.text(GAME_W - 295, hudY - 18, "Combo: 0", { ...pillStyle, color: "#93c5fd" });
+        this.hudLevel = this.add.text(GAME_W - 170, hudY - 18, "Lv: 1", { ...pillStyle, color: "#c4b5fd" });
 
         hud.add([this.hudScore, this.hudHealth, this.hudCombo, this.hudLevel]);
 
-        hud.add(this.add.rectangle(GAME_W - 260, 56, 260, 16, 0x0f172a, 0.95));
-        this.healthBar = this.add.rectangle(GAME_W - 390, 56, 260, 10, 0x22c55e, 1).setOrigin(0, 0.5);
+        hud.add(this.add.rectangle(GAME_W - 260, hudY + 18, 260, 16, 0x0f172a, 0.95));
+        this.healthBar = this.add.rectangle(GAME_W - 390, hudY + 18, 260, 10, 0x22c55e, 1).setOrigin(0, 0.5);
         hud.add(this.healthBar);
 
         this.messageText = this.add.text(28, 74, "Loading ocean...", {
@@ -686,12 +693,12 @@ export default function FishGame({
           strokeThickness: 4,
         }).setScrollFactor(0).setDepth(501);
 
-        this.pointerStar = this.add.text(GAME_W / 2, 124, "⭐", {
+        this.pointerStar = this.add.text(GAME_W / 2, SAFE_TOP + 118, "⭐", {
           fontSize: "32px",
         }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
 
-        this.exitButton = this.add.text(GAME_W - 75, 86, "EXIT", {
-          fontSize: "18px",
+        this.exitButton = this.add.text(GAME_W - 75, SAFE_TOP + 92, "EXIT", {
+          fontSize: isMobileDevice ? "13px" : "18px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
@@ -707,12 +714,14 @@ export default function FishGame({
       }
 
       createMiniMap() {
-        this.map = this.add.container(GAME_W - 185, GAME_H * 0.30).setScrollFactor(0).setDepth(520);
+        this.map = this.add.container(GAME_W - 170, SAFE_TOP + 140).setScrollFactor(0).setDepth(520);
 
-        const bg = this.add.rectangle(0, 0, 310, 178, 0x020617, 0.72);
+        const mapBoxW = isMobileDevice ? 230 : 310;
+        const mapBoxH = isMobileDevice ? 132 : 178;
+        const bg = this.add.rectangle(0, 0, mapBoxW, mapBoxH, 0x020617, 0.72);
         bg.setStrokeStyle(2, 0x38bdf8, 0.55);
 
-        const title = this.add.text(-142, -82, "MAP", {
+        const title = this.add.text(-mapBoxW / 2 + 12, -mapBoxH / 2 + 8, "MAP", {
           fontSize: "13px",
           color: "#93c5fd",
           fontFamily: "Arial",
@@ -1117,7 +1126,7 @@ export default function FishGame({
         const sy = correct.y - cam.scrollY;
 
         this.pointerStar.x = Phaser.Math.Clamp(sx, 70, cam.width - 70);
-        this.pointerStar.y = Phaser.Math.Clamp(sy, 100, cam.height - 70);
+        this.pointerStar.y = Phaser.Math.Clamp(sy, SAFE_TOP + 80, cam.height - SAFE_BOTTOM - 70);
       }
 
       updateMiniMap() {
@@ -1126,8 +1135,8 @@ export default function FishGame({
         this.miniDots.forEach((d) => d.destroy());
         this.miniDots = [];
 
-        const mapW = 310;
-        const mapH = 178;
+        const mapW = isMobileDevice ? 230 : 310;
+        const mapH = isMobileDevice ? 132 : 178;
         const sx = mapW / WORLD_W;
         const sy = mapH / WORLD_H;
 
@@ -1274,7 +1283,7 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-ocean-v6-2-mobile-joystick",
+            mode: "fish-ocean-v6-3-mobile-hud-safe",
           });
         }
       }
