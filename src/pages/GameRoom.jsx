@@ -11,12 +11,7 @@ export default function GameRoom({
   if (mode === "archery") {
     return (
       <div className="fixed inset-0 z-[99999] overflow-hidden bg-black">
-        <ArcheryGame
-          questions={questions}
-          topic={topic}
-          onExit={onExit}
-          onReward={onReward}
-        />
+        <ArcheryGame questions={questions} topic={topic} onExit={onExit} onReward={onReward} />
       </div>
     );
   }
@@ -24,12 +19,7 @@ export default function GameRoom({
   if (mode === "fish") {
     return (
       <div className="fixed inset-0 z-[99999] overflow-hidden bg-black">
-        <FishGame
-          questions={questions}
-          topic={topic}
-          onExit={onExit}
-          onReward={onReward}
-        />
+        <FishGame questions={questions} topic={topic} onExit={onExit} onReward={onReward} />
       </div>
     );
   }
@@ -40,11 +30,7 @@ export default function GameRoom({
         <div className="text-6xl">🎮</div>
         <h1 className="mt-4 text-3xl font-black">Game Room</h1>
         <p className="mt-2 text-slate-400">This game mode is coming next.</p>
-
-        <button
-          onClick={onExit}
-          className="mt-6 rounded-2xl bg-blue-600 px-6 py-3 font-bold text-white hover:bg-blue-700"
-        >
+        <button onClick={onExit} className="mt-6 rounded-2xl bg-blue-600 px-6 py-3 font-bold text-white hover:bg-blue-700">
           Back to Study Games
         </button>
       </div>
