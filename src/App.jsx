@@ -2721,36 +2721,43 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
     }
   };
 
-  if (studyGameStarted && studyGameMode === "archery") {
-    return (
-      <GameRoom
-        mode="archery"
-        questions={studyGameQuestions}
-        topic={studyGameTopic}
-        onExit={() => {
-          setStudyGameStarted(false);
-          setStudyGameFeedback("");
-        }}
-        onReward={({ xp: rewardXp = 0, coins = 0, score = 0, total = studyGameQuestions.length }) => {
-          setStudyGameScore(score);
-          addXp(rewardXp);
-          setStudyCoins((prev) => prev + coins);
-          unlockAchievement(
-            "study-games-first",
-            "Study Gamer",
-            "🎮",
-            `You completed Archery Pro and earned +${rewardXp} XP.`,
-            "toast"
-          );
-          showToast(
-            "Archery Complete",
-            `Score ${score}/${total}. +${rewardXp} XP · +${coins} coins`,
-            "🏹"
-          );
-        }}
-      />
-    );
-  }
+  if (
+  studyGameStarted &&
+  ["fish", "archery", "parking", "blast"].includes(studyGameMode)
+) {
+  return (
+    <GameRoom
+      mode={studyGameMode}
+      questions={studyGameQuestions}
+      topic={studyGameTopic}
+      onExit={() => {
+        setStudyGameStarted(false);
+        setStudyGameFeedback("");
+      }}
+      onReward={({ xp: rewardXp = 0, coins = 0, score = 0, total = studyGameQuestions.length }) => {
+        setStudyGameScore(score);
+
+        addXp(rewardXp);
+
+        setStudyCoins((prev) => prev + coins);
+
+        unlockAchievement(
+          "study-games-first",
+          "Study Gamer",
+          "🎮",
+          `You completed ${studyGameMode} mode and earned +${rewardXp} XP.`,
+          "toast"
+        );
+
+        showToast(
+          "Game Complete",
+          `Score ${score}/${total}. +${rewardXp} XP · +${coins} coins`,
+          "🏆"
+        );
+      }}
+    />
+  );
+}
 
   return (
     <div className={`student-os-root min-h-screen flex transition-colors duration-500 overflow-x-hidden ${appBg}`}>
