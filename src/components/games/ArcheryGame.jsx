@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Cinematic V3 Stable
+ * ArcheryGame Cinematic V3 Shuffle
  * Path: src/components/games/ArcheryGame.jsx
  *
  * Fullscreen professional-looking Phaser archery game.
@@ -391,6 +391,15 @@ export default function ArcheryGame({
         if (this.powerFill) this.powerFill.height = 0;
       }
 
+      shuffleOptions(options) {
+        const shuffled = [...options];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Phaser.Math.Between(0, i);
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+      }
+
       loadQuestion() {
         this.clearRoundObjects();
 
@@ -409,7 +418,8 @@ export default function ArcheryGame({
 
         this.questionText.setText(`Q${currentIndex + 1}. ${q.question}`);
 
-        const options = [...q.options].slice(0, 4);
+        const optionSet = new Set([...(q.options || []), q.answer]);
+        const options = this.shuffleOptions([...optionSet]).slice(0, 4);
         const positions =
           width < 760
             ? [
@@ -925,7 +935,7 @@ export default function ArcheryGame({
       <div className="flex h-screen w-screen flex-col">
         <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3 Stable</h1>
+            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3 Shuffle</h1>
             <p className="text-xs text-slate-400 sm:text-sm">
               {topic || "Study Topic"} · vertical moving targets · bigger aim space · 3 arrows
             </p>
