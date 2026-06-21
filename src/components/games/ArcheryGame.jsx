@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Cinematic V2
+ * ArcheryGame Cinematic V3
  * Path: src/components/games/ArcheryGame.jsx
  *
  * Fullscreen professional-looking Phaser archery game.
@@ -25,7 +25,7 @@ export default function ArcheryGame({
     arrows: 3,
     current: 1,
     total: Math.max(questions.length, 1),
-    message: "Aim at the moving correct answer. First arrow gives max points.",
+    message: "Use the open right side to aim. Targets move vertically.",
   });
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function ArcheryGame({
             Phaser.Math.Between(75, 230)
           ).setDepth(4);
 
-          const alpha = Phaser.Math.FloatBetween(0.12, 0.28);
+          const alpha = Phaser.Math.FloatBetween(0.08, 0.16);
           cloud.add(this.add.circle(0, 0, 24, 0xffffff, alpha));
           cloud.add(this.add.circle(28, -8, 32, 0xffffff, alpha));
           cloud.add(this.add.circle(62, 0, 24, 0xffffff, alpha));
@@ -208,7 +208,7 @@ export default function ArcheryGame({
           .setDepth(70);
 
         this.add
-          .text(36, height - 60, "Drag / tap to aim • Release to shoot • 3 arrows per question", {
+          .text(36, height - 60, "Use right-side open space to aim • Release to shoot • Targets move vertically", {
             fontSize: width < 700 ? "12px" : "16px",
             color: "#fde68a",
             fontFamily: "Arial",
@@ -218,12 +218,26 @@ export default function ArcheryGame({
           })
           .setDepth(70);
 
+        // Right-side aim zone, kept mostly transparent so it does not disturb the scene.
+        this.add.roundedRectangle(width - 165, height / 2 + 20, 260, 360, 28, 0x020617, 0.18).setDepth(18);
+        this.add
+          .text(width - 165, height / 2 - 190, "AIM ZONE", {
+            fontSize: width < 700 ? "12px" : "15px",
+            color: "#fde68a",
+            fontFamily: "Arial",
+            fontStyle: "bold",
+            stroke: "#000000",
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5)
+          .setDepth(70);
+
         this.createBow(width, height);
         this.createPowerBar(width, height);
       }
 
       createBow(width, height) {
-        const bowX = width - 120;
+        const bowX = width - 150;
         const bowY = height / 2 + 20;
 
         this.bow = this.add.container(bowX, bowY).setDepth(60);
@@ -329,7 +343,7 @@ export default function ArcheryGame({
       updateAim(x, y) {
         const width = this.scale.width;
         const height = this.scale.height;
-        const bowX = width - 170;
+        const bowX = width - 220;
         const bowY = height / 2 + 20;
 
         this.crosshair.x = x;
@@ -391,16 +405,16 @@ export default function ArcheryGame({
         const positions =
           width < 760
             ? [
-                [width * 0.34, height * 0.30],
-                [width * 0.52, height * 0.42],
-                [width * 0.35, height * 0.62],
-                [width * 0.56, height * 0.70],
+                [width * 0.30, height * 0.26],
+                [width * 0.43, height * 0.40],
+                [width * 0.31, height * 0.58],
+                [width * 0.45, height * 0.72],
               ]
             : [
                 [width * 0.34, height * 0.28],
-                [width * 0.53, height * 0.38],
-                [width * 0.36, height * 0.62],
-                [width * 0.55, height * 0.72],
+                [width * 0.45, height * 0.38],
+                [width * 0.31, height * 0.62],
+                [width * 0.46, height * 0.72],
               ];
 
         options.forEach((answer, index) => {
@@ -411,40 +425,24 @@ export default function ArcheryGame({
           this.labels.push(target.label);
 
           const difficulty = Math.min(520, currentIndex * 70);
-          const moveX = index % 2 === 0 ? 92 : -92;
-          const moveY = index % 2 === 0 ? 26 : -26;
+          const moveY = index % 2 === 0 ? 70 : -70;
 
+          // Vertical movement only. This gives a cleaner archery feel
+          // and keeps the right side free for aiming/dragging.
           this.tweens.add({
             targets: target.objects,
-            x: `+=${moveX}`,
             y: `+=${moveY}`,
-            duration: Math.max(620, 1250 - difficulty + index * 130),
+            duration: Math.max(760, 1350 - difficulty + index * 150),
             yoyo: true,
             repeat: -1,
             ease: "Sine.inOut",
           });
 
-          this.tweens.add({
-            targets: target.rings,
-            scaleX: 1.12,
-            scaleY: 1.12,
-            duration: 520 + index * 80,
-            yoyo: true,
-            repeat: -1,
-          });
-
-          this.tweens.add({
-            targets: target.glow,
-            alpha: 0.32,
-            scaleX: 1.22,
-            scaleY: 1.22,
-            duration: 700,
-            yoyo: true,
-            repeat: -1,
-          });
+          // Stable glow. No scale pulsing here because it looked like blinking.
+          target.glow.setAlpha(0.2);
         });
 
-        syncHud("3 arrows loaded. Aim carefully at the moving correct answer.");
+        syncHud("3 arrows loaded. Use the open right-side space to aim.");
       }
 
       createTarget(x, y, answer, index) {
@@ -504,7 +502,7 @@ export default function ArcheryGame({
         arrowsLeft -= 1;
         syncHud("Arrow flying...");
 
-        const startX = this.scale.width - 170;
+        const startX = this.scale.width - 220;
         const startY = this.scale.height / 2 + 20;
         const angle = Phaser.Math.Angle.Between(startX, startY, pointerX, pointerY);
         const speed = 1150 + this.power * 850;
@@ -676,7 +674,7 @@ export default function ArcheryGame({
       }
 
       reloadArrow() {
-        const x = this.scale.width - 145;
+        const x = this.scale.width - 170;
         const y = this.scale.height / 2 + 20;
 
         const reloadText = this.add
@@ -919,9 +917,9 @@ export default function ArcheryGame({
       <div className="flex h-screen w-screen flex-col">
         <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V2</h1>
+            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3</h1>
             <p className="text-xs text-slate-400 sm:text-sm">
-              {topic || "Study Topic"} · cinematic moving targets · 3 arrows per question
+              {topic || "Study Topic"} · vertical moving targets · bigger aim space · 3 arrows
             </p>
           </div>
 
