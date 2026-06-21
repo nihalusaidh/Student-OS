@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V5 - Performance Optimized
+ * FishGame V6 - True Fullscreen Mobile Joystick
  * Path: src/components/games/FishGame.jsx
  *
  * Goal:
@@ -56,10 +56,17 @@ export default function FishGame({
 
     const safeQuestions = questionsRef.current?.length ? questionsRef.current : fallbackQuestions;
 
+    const isMobileDevice =
+      window.matchMedia("(pointer: coarse)").matches ||
+      window.innerWidth <= 900 ||
+      window.innerHeight <= 600;
+
     const GAME_W = 1600;
     const GAME_H = 900;
     const WORLD_W = 3400;
     const WORLD_H = 1900;
+
+    let gameReady = false;
 
     let score = 0;
     let health = 100;
@@ -99,6 +106,16 @@ export default function FishGame({
         this.pointerStar = null;
         this.map = null;
         this.exitButton = null;
+        this.loadingPanel = null;
+        this.joyBase = null;
+        this.joyKnob = null;
+        this.joyText = null;
+        this.joystickActive = false;
+        this.joystickPointerId = null;
+        this.joystickVector = new Phaser.Math.Vector2(0, 0);
+        this.joyCenterX = 150;
+        this.joyCenterY = GAME_H - 150;
+        this.joyRadius = 78;
 
         this.lastMiniMapUpdate = 0;
         this.lastHudUpdate = 0;
@@ -119,11 +136,22 @@ export default function FishGame({
         this.createMiniMap();
 
         this.loadQuestion();
+        this.createLoadingScreen();
 
         this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
 
-        this.input.on("pointermove", (p) => this.updateTargetFromPointer(p));
-        this.input.on("pointerdown", (p) => this.updateTargetFromPointer(p));
+        this.input.on("pointermove", (p) => this.handlePointerMove(p));
+        this.input.on("pointerdown", (p) => this.handlePointerDown(p));
+        this.input.on("pointerup", (p) => this.handlePointerUp(p));
+        this.input.on("pointerupoutside", (p) => this.handlePointerUp(p));
+
+        if (isMobileDevice) this.createGlassJoystick();
+
+        this.time.delayedCall(1200, () => {
+          gameReady = true;
+          this.hideLoadingScreen();
+          this.setMessage(isMobileDevice ? "Use the glass joystick to move. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
+        });
 
         this.time.addEvent({
           delay: 1000,
@@ -145,7 +173,7 @@ export default function FishGame({
       }
 
       update(time) {
-        if (ended || !this.player) return;
+        if (ended || !this.player || !gameReady) return;
 
         this.movePlayer(time);
         this.moveRoamingFish();
@@ -171,11 +199,159 @@ export default function FishGame({
         }
       }
 
+      handlePointerDown(pointer) {
+        if (ended) return;
+
+        if (isMobileDevice) {
+          const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.joyCenterX, this.joyCenterY);
+          if (dist <= this.joyRadius * 1.7) {
+            this.joystickActive = true;
+            this.joystickPointerId = pointer.id;
+            this.updateJoystick(pointer);
+            return;
+          }
+        }
+
+        this.updateTargetFromPointer(pointer);
+      }
+
+      handlePointerMove(pointer) {
+        if (ended) return;
+
+        if (isMobileDevice && this.joystickActive && pointer.id === this.joystickPointerId) {
+          this.updateJoystick(pointer);
+          return;
+        }
+
+        if (!isMobileDevice) this.updateTargetFromPointer(pointer);
+      }
+
+      handlePointerUp(pointer) {
+        if (!isMobileDevice) return;
+        if (pointer.id !== this.joystickPointerId) return;
+
+        this.joystickActive = false;
+        this.joystickPointerId = null;
+        this.joystickVector.set(0, 0);
+
+        if (this.joyKnob) {
+          this.tweens.add({
+            targets: this.joyKnob,
+            x: this.joyCenterX,
+            y: this.joyCenterY,
+            duration: 130,
+            ease: "Sine.out",
+          });
+        }
+      }
+
+      updateJoystick(pointer) {
+        const dx = pointer.x - this.joyCenterX;
+        const dy = pointer.y - this.joyCenterY;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const clamped = Math.min(len, this.joyRadius);
+        const angle = Math.atan2(dy, dx);
+
+        const knobX = this.joyCenterX + Math.cos(angle) * clamped;
+        const knobY = this.joyCenterY + Math.sin(angle) * clamped;
+
+        this.joyKnob.x = knobX;
+        this.joyKnob.y = knobY;
+
+        if (len > 8) {
+          this.joystickVector.set(Math.cos(angle), Math.sin(angle));
+        } else {
+          this.joystickVector.set(0, 0);
+        }
+      }
+
       updateTargetFromPointer(pointer) {
         if (ended) return;
         const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
         this.targetX = Phaser.Math.Clamp(world.x, 70, WORLD_W - 70);
         this.targetY = Phaser.Math.Clamp(world.y, 100, WORLD_H - 90);
+      }
+
+      createLoadingScreen() {
+        this.loadingPanel = this.add.container(GAME_W / 2, GAME_H / 2).setScrollFactor(0).setDepth(900);
+
+        const bg = this.add.rectangle(0, 0, GAME_W, GAME_H, 0x020617, 0.92);
+        const card = this.add.rectangle(0, 0, 620, 260, 0x0f172a, 0.96);
+        card.setStrokeStyle(3, 0x38bdf8, 0.55);
+
+        const title = this.add.text(0, -76, "🌊 LOADING OCEAN", {
+          fontSize: "42px",
+          color: "#ffffff",
+          fontFamily: "Arial",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 7,
+        }).setOrigin(0.5);
+
+        const sub = this.add.text(0, -15, "Preparing fish, predators, map and powerups...", {
+          fontSize: "20px",
+          color: "#cbd5e1",
+          fontFamily: "Arial",
+        }).setOrigin(0.5);
+
+        const barBack = this.add.rectangle(0, 52, 440, 18, 0x020617, 1);
+        const bar = this.add.rectangle(-220, 52, 0, 12, 0x38bdf8, 1).setOrigin(0, 0.5);
+
+        this.loadingPanel.add([bg, card, title, sub, barBack, bar]);
+
+        this.tweens.add({
+          targets: bar,
+          width: 440,
+          duration: 1100,
+          ease: "Sine.out",
+        });
+      }
+
+      hideLoadingScreen() {
+        if (!this.loadingPanel) return;
+        this.tweens.add({
+          targets: this.loadingPanel,
+          alpha: 0,
+          duration: 280,
+          onComplete: () => {
+            this.loadingPanel.destroy();
+            this.loadingPanel = null;
+          },
+        });
+      }
+
+      createGlassJoystick() {
+        const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(650);
+
+        this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.16);
+        this.joyBase.setStrokeStyle(4, 0x38bdf8, 0.48);
+
+        const inner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.06);
+        inner.setStrokeStyle(2, 0xffffff, 0.25);
+
+        this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, 34, 0xffffff, 0.36);
+        this.joyKnob.setStrokeStyle(4, 0x67e8f9, 0.85);
+
+        this.joyText = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 25, "MOVE", {
+          fontSize: "15px",
+          color: "#bae6fd",
+          fontFamily: "Arial",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 4,
+        }).setOrigin(0.5);
+
+        layer.add([this.joyBase, inner, this.joyKnob, this.joyText]);
+
+        this.tweens.add({
+          targets: this.joyBase,
+          alpha: 0.25,
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 900,
+          yoyo: true,
+          repeat: -1,
+        });
       }
 
       createWorld() {
@@ -467,7 +643,7 @@ export default function FishGame({
         this.healthBar = this.add.rectangle(1185, 56, 310, 10, 0x22c55e, 1).setOrigin(0, 0.5);
         hud.add(this.healthBar);
 
-        this.messageText = this.add.text(28, 74, "Loading ocean...", {
+        this.messageText = this.add.text(28, 74, "Preparing ocean...", {
           fontSize: "17px",
           color: "#cbd5e1",
           fontFamily: "Arial",
@@ -550,6 +726,31 @@ export default function FishGame({
         this.labels = [];
       }
 
+      startRainbowAnswerFish(fish) {
+        const rainbow = [0xfacc15, 0x22c55e, 0x38bdf8, 0xa855f7, 0xec4899, 0xffffff];
+        let colorIndex = 0;
+
+        this.time.addEvent({
+          delay: 180,
+          loop: true,
+          callback: () => {
+            if (!fish.active || !fish.glow?.active) return;
+            colorIndex = (colorIndex + 1) % rainbow.length;
+            fish.glow.setFillStyle(rainbow[colorIndex], 0.36);
+          },
+        });
+
+        this.tweens.add({
+          targets: fish.glow,
+          alpha: 0.42,
+          scaleX: 1.3,
+          scaleY: 1.3,
+          duration: 620,
+          yoyo: true,
+          repeat: -1,
+        });
+      }
+
       loadQuestion() {
         this.clearAnswers();
 
@@ -599,15 +800,7 @@ export default function FishGame({
           fish.setDepth(correct ? 60 : 45);
 
           if (correct) {
-            this.tweens.add({
-              targets: fish.glow,
-              alpha: 0.36,
-              scaleX: 1.24,
-              scaleY: 1.24,
-              duration: 820,
-              yoyo: true,
-              repeat: -1,
-            });
+            this.startRainbowAnswerFish(fish);
           }
 
           const label = this.add.text(fish.x, fish.y + 62, answer, {
@@ -630,19 +823,29 @@ export default function FishGame({
       }
 
       movePlayer(time) {
-        const dx = this.targetX - this.player.x;
-        const dy = this.targetY - this.player.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
+        const boost = time < speedBoostUntil ? 55 : 0;
+        const speed = 315 + level * 18 + boost;
 
-        if (d > 8) {
-          const angle = Math.atan2(dy, dx);
-          const boost = time < speedBoostUntil ? 55 : 0;
-          const speed = 315 + level * 18 + boost;
-
-          this.player.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-          this.player.rotation = angle;
+        if (isMobileDevice) {
+          if (this.joystickVector.length() > 0.05) {
+            const angle = Math.atan2(this.joystickVector.y, this.joystickVector.x);
+            this.player.body.setVelocity(this.joystickVector.x * speed, this.joystickVector.y * speed);
+            this.player.rotation = angle;
+          } else {
+            this.player.body.setVelocity(0, 0);
+          }
         } else {
-          this.player.body.setVelocity(0, 0);
+          const dx = this.targetX - this.player.x;
+          const dy = this.targetY - this.player.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+
+          if (d > 8) {
+            const angle = Math.atan2(dy, dx);
+            this.player.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+            this.player.rotation = angle;
+          } else {
+            this.player.body.setVelocity(0, 0);
+          }
         }
 
         const size = Math.min(1.9, 1 + (level - 1) * 0.075);
@@ -1037,7 +1240,7 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-ocean-performance-v5",
+            mode: "fish-ocean-v6-fullscreen-joystick",
           });
         }
       }
@@ -1058,8 +1261,9 @@ export default function FishGame({
         },
       },
       scale: {
-        mode: Phaser.Scale.FIT,
+        mode: Phaser.Scale.ENVELOP,
         autoCenter: Phaser.Scale.CENTER_BOTH,
+        fullscreenTarget: containerRef.current,
       },
       render: {
         antialias: false,
@@ -1079,8 +1283,31 @@ export default function FishGame({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white">
-      <div ref={containerRef} className="h-screen w-screen bg-slate-950" />
+    <div
+      className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white"
+      style={{
+        width: "100dvw",
+        height: "100dvh",
+        maxWidth: "100dvw",
+        maxHeight: "100dvh",
+        touchAction: "none",
+        overscrollBehavior: "none",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
+    >
+      <div
+        ref={containerRef}
+        className="bg-slate-950"
+        style={{
+          width: "100dvw",
+          height: "100dvh",
+          maxWidth: "100dvw",
+          maxHeight: "100dvh",
+          touchAction: "none",
+          overflow: "hidden",
+        }}
+      />
     </div>
   );
 }
