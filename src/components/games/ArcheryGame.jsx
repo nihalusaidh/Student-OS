@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Cinematic V3
+ * ArcheryGame Cinematic V3 Stable
  * Path: src/components/games/ArcheryGame.jsx
  *
  * Fullscreen professional-looking Phaser archery game.
@@ -19,6 +19,12 @@ export default function ArcheryGame({
   const gameRef = useRef(null);
   const rewardSentRef = useRef(false);
 
+  // Keep latest props without recreating Phaser on every React render.
+  // This fixes blinking/restarting from question 1.
+  const questionsRef = useRef(questions);
+  const topicRef = useRef(topic);
+  const onRewardRef = useRef(onReward);
+
   const [hud, setHud] = useState({
     score: 0,
     combo: 0,
@@ -31,9 +37,11 @@ export default function ArcheryGame({
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return;
 
+    const initialQuestions = questionsRef.current || [];
+
     const safeQuestions =
-      questions.length > 0
-        ? questions
+      initialQuestions.length > 0
+        ? initialQuestions
         : [
             { question: "Both inputs 1 gives output 1?", answer: "AND", options: ["AND", "OR", "XOR", "NOT"] },
             { question: "Either input 1 gives output 1?", answer: "OR", options: ["AND", "OR", "NAND", "NOR"] },
@@ -869,14 +877,14 @@ export default function ArcheryGame({
 
         syncHud("Game complete.");
 
-        if (!rewardSentRef.current && typeof onReward === "function") {
+        if (!rewardSentRef.current && typeof onRewardRef.current === "function") {
           rewardSentRef.current = true;
-          onReward({
+          onRewardRef.current({
             xp,
             coins,
             score,
             total: safeQuestions.length,
-            mode: "archery-cinematic-v2",
+            mode: "archery-cinematic-v3",
           });
         }
       }
@@ -910,14 +918,14 @@ export default function ArcheryGame({
         gameRef.current = null;
       }
     };
-  }, [questions, topic, onReward]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white">
       <div className="flex h-screen w-screen flex-col">
         <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3</h1>
+            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3 Stable</h1>
             <p className="text-xs text-slate-400 sm:text-sm">
               {topic || "Study Topic"} · vertical moving targets · bigger aim space · 3 arrows
             </p>
