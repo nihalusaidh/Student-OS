@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Cinematic V3 Shuffle
+ * ArcheryGame Cinematic V4 Bullseye
  * Path: src/components/games/ArcheryGame.jsx
  *
  * Fullscreen professional-looking Phaser archery game.
@@ -31,7 +31,7 @@ export default function ArcheryGame({
     arrows: 3,
     current: 1,
     total: Math.max(questions.length, 1),
-    message: "Use the open right side to aim. Targets move vertically.",
+    message: "Aim for the center. Bullseye gives +20 bonus.",
   });
 
   useEffect(() => {
@@ -460,7 +460,7 @@ export default function ArcheryGame({
           target.glow.setAlpha(0.2);
         });
 
-        syncHud("3 arrows loaded. Use the open right-side space to aim.");
+        syncHud("3 arrows loaded. Hit the center for Bullseye +20.");
       }
 
       createTarget(x, y, answer, index) {
@@ -601,7 +601,13 @@ export default function ArcheryGame({
           String(zone.answer).trim().toLowerCase() ===
           String(q.answer).trim().toLowerCase();
 
-        if (correct) this.handleCorrect(zone);
+        const hitDistance = this.arrow
+          ? Phaser.Math.Distance.Between(this.arrow.x, this.arrow.y, zone.x, zone.y)
+          : 99;
+
+        const bullseye = hitDistance <= 18;
+
+        if (correct) this.handleCorrect(zone, bullseye);
         else this.handleWrong(zone);
       }
 
@@ -611,7 +617,7 @@ export default function ArcheryGame({
         return 10;
       }
 
-      handleCorrect(zone) {
+      handleCorrect(zone, bullseye = false) {
         this.arrow?.destroy();
         this.arrow = null;
 
@@ -620,15 +626,18 @@ export default function ArcheryGame({
 
         const comboBonus = combo >= 3 ? 15 : 0;
         const perfectBonus = arrowsLeft === 2 ? 15 : 0;
-        const gained = base + comboBonus + perfectBonus;
+        const bullseyeBonus = bullseye ? 20 : 0;
+        const gained = base + comboBonus + perfectBonus + bullseyeBonus;
 
         score += gained;
 
         this.paintTarget(zone, 0x22c55e);
         this.burst(zone.x, zone.y, 0x22c55e, true);
-        this.floatingText(zone.x, zone.y - 90, `+${gained}`, "#22c55e");
+        if (bullseye) this.ringShockwave(zone.x, zone.y, 0xfacc15);
+        this.floatingText(zone.x, zone.y - 90, `+${gained}`, bullseye ? "#facc15" : "#22c55e");
 
-        if (perfectBonus) this.centerMessage("PERFECT HIT!", "#facc15");
+        if (bullseye) this.centerMessage("BULLSEYE +20!", "#facc15");
+        else if (perfectBonus) this.centerMessage("PERFECT HIT!", "#facc15");
         else if (comboBonus) this.centerMessage("COMBO BONUS!", "#38bdf8");
         else this.centerMessage("CORRECT!", "#22c55e");
 
@@ -805,6 +814,19 @@ export default function ArcheryGame({
         });
       }
 
+      ringShockwave(x, y, color) {
+        const ring = this.add.circle(x, y, 18, color, 0).setStrokeStyle(5, color, 0.9).setDepth(94);
+        this.tweens.add({
+          targets: ring,
+          scaleX: 5,
+          scaleY: 5,
+          alpha: 0,
+          duration: 520,
+          ease: "Cubic.out",
+          onComplete: () => ring.destroy(),
+        });
+      }
+
       centerMessage(text, color) {
         const item = this.add
           .text(this.scale.width / 2, this.scale.height / 2 - 135, text, {
@@ -935,9 +957,9 @@ export default function ArcheryGame({
       <div className="flex h-screen w-screen flex-col">
         <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V3 Shuffle</h1>
+            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V4</h1>
             <p className="text-xs text-slate-400 sm:text-sm">
-              {topic || "Study Topic"} · vertical moving targets · bigger aim space · 3 arrows
+              {topic || "Study Topic"} · bullseye bonus · shuffled targets · 3 arrows
             </p>
           </div>
 
