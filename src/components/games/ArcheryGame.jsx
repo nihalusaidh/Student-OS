@@ -219,7 +219,7 @@ export default function ArcheryGame({
           .setDepth(70);
 
         // Right-side aim zone, kept mostly transparent so it does not disturb the scene.
-        this.add.roundedRectangle(width - 165, height / 2 + 20, 260, 360, 28, 0x020617, 0.18).setDepth(18);
+        this.add.rectangle(width - 165, height / 2 + 20, 260, 360, 0x020617, 0.18).setDepth(18);
         this.add
           .text(width - 165, height / 2 - 190, "AIM ZONE", {
             fontSize: width < 700 ? "12px" : "15px",
@@ -949,7 +949,7 @@ export default function ArcheryGame({
           {hud.message}
         </div>
 
-        <div ref={containerRef} className="h-full min-h-0 w-full flex-1 bg-slate-900" />
+        <div ref={containerRef} className="h-full min-h-0 w-full flex-1 bg-slate-950" />
       </div>
     </div>
   );
