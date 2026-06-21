@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V6.1 - True Responsive Fullscreen
+ * FishGame V6.2 - Mobile Dynamic Joystick
  * Path: src/components/games/FishGame.jsx
  *
  * Goal:
@@ -119,6 +119,7 @@ export default function FishGame({
         this.joyRadius = Math.max(54, Math.min(82, GAME_W * 0.07));
         this.joyCenterX = Math.max(90, GAME_W * 0.12);
         this.joyCenterY = Math.max(150, GAME_H * 0.78);
+        this.dynamicJoy = true;
 
         this.lastMiniMapUpdate = 0;
         this.lastHudUpdate = 0;
@@ -153,7 +154,7 @@ export default function FishGame({
         this.time.delayedCall(1000, () => {
           gameReady = true;
           this.hideLoadingScreen();
-          this.setMessage(isMobileDevice ? "Use joystick to move. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
+          this.setMessage(isMobileDevice ? "Touch anywhere on left side to move like joystick. Chase ⭐ answer fish." : "Move with mouse/touch. Chase ⭐ answer fish.");
         });
 
         this.time.addEvent({
@@ -206,10 +207,16 @@ export default function FishGame({
         if (ended) return;
 
         if (isMobileDevice) {
-          const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.joyCenterX, this.joyCenterY);
-          if (dist <= this.joyRadius * 1.9) {
+          // BGMI-style floating joystick:
+          // wherever the user touches on the left side, joystick appears there.
+          if (pointer.x < GAME_W * 0.52 && pointer.y > GAME_H * 0.18) {
             this.joystickActive = true;
             this.joystickPointerId = pointer.id;
+
+            this.joyCenterX = Phaser.Math.Clamp(pointer.x, this.joyRadius + 18, GAME_W * 0.48);
+            this.joyCenterY = Phaser.Math.Clamp(pointer.y, GAME_H * 0.24, GAME_H - this.joyRadius - 18);
+
+            this.moveJoystickBase(this.joyCenterX, this.joyCenterY);
             this.updateJoystick(pointer);
             return;
           }
@@ -245,6 +252,25 @@ export default function FishGame({
             duration: 120,
             ease: "Sine.out",
           });
+        }
+      }
+
+      moveJoystickBase(x, y) {
+        if (!this.joyBase || !this.joyKnob) return;
+
+        this.joyBase.x = x;
+        this.joyBase.y = y;
+        this.joyKnob.x = x;
+        this.joyKnob.y = y;
+
+        if (this.joyInner) {
+          this.joyInner.x = x;
+          this.joyInner.y = y;
+        }
+
+        if (this.joyLabel) {
+          this.joyLabel.x = x;
+          this.joyLabel.y = y + this.joyRadius + 20;
         }
       }
 
@@ -334,13 +360,13 @@ export default function FishGame({
         this.joyBase = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius, 0x93c5fd, 0.17);
         this.joyBase.setStrokeStyle(4, 0x38bdf8, 0.55);
 
-        const inner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.07);
-        inner.setStrokeStyle(2, 0xffffff, 0.28);
+        this.joyInner = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.58, 0xffffff, 0.07);
+        this.joyInner.setStrokeStyle(2, 0xffffff, 0.28);
 
         this.joyKnob = this.add.circle(this.joyCenterX, this.joyCenterY, this.joyRadius * 0.42, 0xffffff, 0.35);
         this.joyKnob.setStrokeStyle(4, 0x67e8f9, 0.85);
 
-        const label = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, "MOVE", {
+        this.joyLabel = this.add.text(this.joyCenterX, this.joyCenterY + this.joyRadius + 20, "TOUCH LEFT SIDE", {
           fontSize: Math.max(11, GAME_W * 0.011) + "px",
           color: "#bae6fd",
           fontFamily: "Arial",
@@ -349,7 +375,7 @@ export default function FishGame({
           strokeThickness: 4,
         }).setOrigin(0.5);
 
-        layer.add([this.joyBase, inner, this.joyKnob, label]);
+        layer.add([this.joyBase, this.joyInner, this.joyKnob, this.joyLabel]);
 
         this.tweens.add({
           targets: this.joyBase,
@@ -681,7 +707,7 @@ export default function FishGame({
       }
 
       createMiniMap() {
-        this.map = this.add.container(GAME_W - 185, 160).setScrollFactor(0).setDepth(520);
+        this.map = this.add.container(GAME_W - 185, GAME_H * 0.30).setScrollFactor(0).setDepth(520);
 
         const bg = this.add.rectangle(0, 0, 310, 178, 0x020617, 0.72);
         bg.setStrokeStyle(2, 0x38bdf8, 0.55);
@@ -1091,7 +1117,7 @@ export default function FishGame({
         const sy = correct.y - cam.scrollY;
 
         this.pointerStar.x = Phaser.Math.Clamp(sx, 70, cam.width - 70);
-        this.pointerStar.y = Phaser.Math.Clamp(sy, 120, cam.height - 70);
+        this.pointerStar.y = Phaser.Math.Clamp(sy, 100, cam.height - 70);
       }
 
       updateMiniMap() {
@@ -1248,7 +1274,7 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-ocean-v6-responsive-fullscreen",
+            mode: "fish-ocean-v6-2-mobile-joystick",
           });
         }
       }
@@ -1305,6 +1331,25 @@ export default function FishGame({
         userSelect: "none",
       }}
     >
+      <div className="absolute inset-0 z-[100000] flex items-center justify-center bg-slate-950 p-6 text-center landscape:hidden">
+        <div className="max-w-sm rounded-3xl border border-cyan-400/40 bg-slate-900/95 p-7 shadow-2xl">
+          <div className="text-6xl">📱↔️</div>
+          <h1 className="mt-4 text-2xl font-black">Rotate Phone</h1>
+          <p className="mt-3 text-slate-300">
+            For the best Ocean Survival gameplay, rotate your phone to landscape mode.
+          </p>
+          <p className="mt-2 text-sm text-cyan-300">
+            Use the floating joystick anywhere on the left side.
+          </p>
+          <button
+            onClick={onExit}
+            className="mt-6 rounded-2xl bg-red-500 px-5 py-3 font-bold text-white hover:bg-red-600"
+          >
+            Exit Game
+          </button>
+        </div>
+      </div>
+
       <div
         ref={containerRef}
         className="bg-slate-950"
