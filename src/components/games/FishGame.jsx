@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame_HungryShark_V2
+ * FishGame_OceanSurvival_Advanced_V3
  * Path: src/components/games/FishGame.jsx
  *
- * Real game loop:
+ * Advanced landscape survival loop:
  * Move fish -> chase answer fish -> eat correct fish -> grow -> gain combo
- * Also includes predators, coins, large ocean map, mini-map, and glowing answer fish.
+ * Includes wider landscape canvas, predators, coins, answer fish, minimap, and mobile rotate warning.
  */
 export default function FishGame({ questions = [], topic = "Study Topic", onExit, onReward }) {
   const containerRef = useRef(null);
@@ -23,7 +23,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
     level: 1,
     current: 1,
     total: Math.max(questions.length, 1),
-    message: "Explore the ocean. Eat the glowing correct answer fish.",
+    message: "Explore the ocean. Follow ⭐, eat correct fish, avoid predators.",
   });
 
   useEffect(() => {
@@ -46,8 +46,8 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
     ];
 
     const safeQuestions = questionsRef.current?.length ? questionsRef.current : fallbackQuestions;
-    const WORLD_W = 2600;
-    const WORLD_H = 1500;
+    const WORLD_W = 3400;
+    const WORLD_H = 1900;
 
     let score = 0;
     let health = 100;
@@ -56,6 +56,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
     let current = 0;
     let ended = false;
     let invincible = false;
+    let shield = 0;
 
     const syncHud = (message) => {
       setHud({
@@ -63,6 +64,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         health,
         combo,
         level,
+        shield,
         current: Math.min(current + 1, safeQuestions.length),
         total: safeQuestions.length,
         message,
@@ -74,8 +76,10 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         super("OceanSurvivalLearning");
         this.player = null;
         this.answerFish = [];
+        this.backgroundFish = [];
         this.predators = [];
         this.coins = [];
+        this.powerups = [];
         this.labels = [];
         this.miniDots = [];
         this.targetX = WORLD_W * 0.18;
@@ -87,9 +91,11 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
 
         this.createWorld();
+        this.createBackgroundLife();
         this.createPlayer();
         this.createPredators();
         this.createCoins();
+        this.createPowerups();
         this.createFixedHud();
         this.createMiniMap();
         this.loadQuestion();
@@ -104,7 +110,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
           loop: true,
           callback: () => {
             if (ended) return;
-            health = Math.max(0, health - 1);
+            health = Math.max(0, health - 0.35);
             this.updateHealthBar();
             if (health <= 0) return this.endGame("Your fish ran out of health!");
             syncHud("Find the glowing answer fish. Avoid skull predators.");
@@ -125,6 +131,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         this.checkAnswerCollision();
         this.checkPredatorCollision();
         this.checkCoinCollision();
+        this.checkPowerupCollision();
         this.updateAnswerPointer();
       }
 
@@ -200,6 +207,30 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         }
       }
 
+      createBackgroundLife() {
+        for (let i = 0; i < 24; i++) {
+          const f = this.makeFish(
+            Phaser.Math.Between(150, WORLD_W - 150),
+            Phaser.Math.Between(160, WORLD_H - 160),
+            [0x38bdf8, 0x22c55e, 0xa855f7, 0xf97316, 0xec4899][Phaser.Math.Between(0, 4)],
+            "",
+            Phaser.Math.FloatBetween(0.45, 0.72),
+            false
+          );
+          f.speed = Phaser.Math.Between(35, 75);
+          f.dir = new Phaser.Math.Vector2(
+            Phaser.Math.FloatBetween(-1, 1),
+            Phaser.Math.FloatBetween(-0.4, 0.4)
+          ).normalize();
+          this.physics.add.existing(f);
+          f.body.setCircle(25);
+          f.body.setCollideWorldBounds(true);
+          f.setAlpha(0.55);
+          f.setDepth(12);
+          this.backgroundFish.push(f);
+        }
+      }
+
       createPlayer() {
         this.player = this.makeFish(WORLD_W * 0.18, WORLD_H * 0.5, 0xf97316, "", 1.15, true);
         this.player.setDepth(80);
@@ -226,7 +257,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
       }
 
       createPredators() {
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 7; i++) {
           const p = this.makeFish(
             Phaser.Math.Between(500, WORLD_W - 160),
             Phaser.Math.Between(150, WORLD_H - 170),
@@ -234,8 +265,8 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
             "☠",
             Phaser.Math.FloatBetween(1.05, 1.35)
           );
-          p.damage = Phaser.Math.Between(10, 18);
-          p.speed = Phaser.Math.Between(95, 150);
+          p.damage = Phaser.Math.Between(7, 13);
+          p.speed = Phaser.Math.Between(75, 120);
           p.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize();
           this.physics.add.existing(p);
           p.body.setCircle(45);
@@ -244,8 +275,20 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         }
       }
 
+
+
+        const boss = this.makeFish(WORLD_W * 0.78, WORLD_H * 0.2, 0x111827, "🦈", 1.55);
+        boss.damage = 18;
+        boss.speed = 72;
+        boss.dir = new Phaser.Math.Vector2(-1, 0.35).normalize();
+        this.physics.add.existing(boss);
+        boss.body.setCircle(58);
+        boss.body.setCollideWorldBounds(true);
+        boss.setDepth(51);
+        this.predators.push(boss);
+
       createCoins() {
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 22; i++) {
           const c = this.add.container(Phaser.Math.Between(260, WORLD_W - 160), Phaser.Math.Between(160, WORLD_H - 160));
           c.add(this.add.circle(0, 0, 34, 0xfacc15, 0.14));
           c.add(this.add.circle(0, 0, 18, 0xfacc15));
@@ -257,31 +300,58 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         }
       }
 
+
+
+      createPowerups() {
+        const types = [
+          { type: "health", icon: "❤️", color: 0xef4444 },
+          { type: "shield", icon: "🛡️", color: 0x38bdf8 },
+          { type: "speed", icon: "⚡", color: 0xfacc15 },
+        ];
+
+        for (let i = 0; i < 7; i++) {
+          const item = types[i % types.length];
+          const p = this.add.container(
+            Phaser.Math.Between(350, WORLD_W - 200),
+            Phaser.Math.Between(220, WORLD_H - 220)
+          ).setDepth(36);
+
+          p.powerType = item.type;
+          p.add(this.add.circle(0, 0, 38, item.color, 0.22));
+          p.add(this.add.circle(0, 0, 24, item.color, 0.85));
+          p.add(this.add.text(0, 0, item.icon, { fontSize: "22px" }).setOrigin(0.5));
+          this.physics.add.existing(p);
+          p.body.setCircle(26);
+          this.tweens.add({ targets: p, y: p.y + 18, scaleX: 1.12, scaleY: 1.12, duration: 780, yoyo: true, repeat: -1 });
+          this.powerups.push(p);
+        }
+      }
+
       createFixedHud() {
         const hud = this.add.container(0, 0).setScrollFactor(0).setDepth(500);
-        hud.add(this.add.rectangle(640, 34, 1280, 68, 0x020617, 0.72));
+        hud.add(this.add.rectangle(800, 34, 1600, 68, 0x020617, 0.72));
         this.questionText = this.add.text(28, 18, "", {
           fontSize: "22px",
           color: "#ffffff",
           fontFamily: "Arial",
           fontStyle: "bold",
-          wordWrap: { width: 760 },
+          wordWrap: { width: 980 },
           stroke: "#000000",
           strokeThickness: 5,
         });
         hud.add(this.questionText);
-        hud.add(this.add.rectangle(1060, 34, 260, 20, 0x0f172a, 0.92));
-        this.healthBar = this.add.rectangle(930, 34, 260, 14, 0x22c55e, 1).setOrigin(0, 0.5);
+        hud.add(this.add.rectangle(1340, 34, 310, 20, 0x0f172a, 0.92));
+        this.healthBar = this.add.rectangle(1185, 34, 310, 14, 0x22c55e, 1).setOrigin(0, 0.5);
         hud.add(this.healthBar);
-        this.pointerStar = this.add.text(640, 110, "⭐", { fontSize: "32px" }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
+        this.pointerStar = this.add.text(800, 110, "⭐", { fontSize: "32px" }).setOrigin(0.5).setScrollFactor(0).setDepth(510);
       }
 
       createMiniMap() {
-        this.map = this.add.container(1095, 130).setScrollFactor(0).setDepth(520);
-        const bg = this.add.rectangle(0, 0, 250, 150, 0x020617, 0.72);
+        this.map = this.add.container(1390, 138).setScrollFactor(0).setDepth(520);
+        const bg = this.add.rectangle(0, 0, 310, 178, 0x020617, 0.72);
         bg.setStrokeStyle(2, 0x38bdf8, 0.55);
         this.map.add(bg);
-        this.map.add(this.add.text(-112, -68, "MAP", { fontSize: "13px", color: "#93c5fd", fontFamily: "Arial", fontStyle: "bold" }));
+        this.map.add(this.add.text(-142, -82, "MAP", { fontSize: "13px", color: "#93c5fd", fontFamily: "Arial", fontStyle: "bold" }));
       }
 
       shuffleOptions(options) {
@@ -347,12 +417,12 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
       }
 
       moveRoamingFish() {
-        [...this.answerFish, ...this.predators].forEach((f) => {
+        [...this.answerFish, ...this.predators, ...this.backgroundFish].forEach((f) => {
           if (!f.active) return;
-          const chase = this.predators.includes(f) && Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y) < 390;
+          const chase = this.predators.includes(f) && Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y) < (f.scaleX > 1.45 ? 520 : 360);
           if (chase) {
             const a = Phaser.Math.Angle.Between(f.x, f.y, this.player.x, this.player.y);
-            f.body.setVelocity(Math.cos(a) * f.speed * 1.35, Math.sin(a) * f.speed * 1.35);
+            f.body.setVelocity(Math.cos(a) * f.speed * (f.scaleX > 1.45 ? 1.1 : 1.28), Math.sin(a) * f.speed * (f.scaleX > 1.45 ? 1.1 : 1.28));
             f.rotation = a;
           } else {
             f.body.setVelocity(f.dir.x * f.speed, f.dir.y * f.speed);
@@ -381,12 +451,19 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
           const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
           if (dist < 62 * this.player.scaleX) {
             invincible = true;
-            health = Math.max(0, health - p.damage);
-            combo = 0;
+            if (shield > 0) {
+              shield -= 1;
+              this.centerMessage("SHIELD BLOCKED!", "#38bdf8");
+              this.burst(this.player.x, this.player.y, 0x38bdf8, true);
+            } else {
+              health = Math.max(0, health - p.damage);
+              combo = 0;
+              this.centerMessage(`PREDATOR HIT -${p.damage}`, "#ef4444");
+              this.cameras.main.shake(180, 0.006);
+              this.burst(this.player.x, this.player.y, 0xef4444, false);
+            }
             this.updateHealthBar();
-            this.centerMessage(`PREDATOR HIT -${p.damage}`, "#ef4444");
-            this.cameras.main.shake(180, 0.006);
-            syncHud("Predator attacked! Avoid skull fish.");
+            syncHud(shield > 0 ? "Shield protected you." : "Predator attacked. Avoid skull fish.");
             this.tweens.add({ targets: this.player, alpha: 0.35, duration: 110, yoyo: true, repeat: 5, onComplete: () => { this.player.alpha = 1; invincible = false; } });
             if (health <= 0) this.endGame("Predators defeated your fish!");
           }
@@ -407,15 +484,45 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         });
       }
 
+
+
+      checkPowerupCollision() {
+        this.powerups.forEach((p) => {
+          if (!p.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
+          if (dist < 66 * this.player.scaleX) {
+            if (p.powerType === "health") {
+              health = Math.min(100, health + 18);
+              this.centerMessage("+18 HEALTH", "#22c55e");
+              this.burst(p.x, p.y, 0x22c55e, true);
+            }
+            if (p.powerType === "shield") {
+              shield = Math.min(3, shield + 1);
+              this.centerMessage("SHIELD +1", "#38bdf8");
+              this.burst(p.x, p.y, 0x38bdf8, true);
+            }
+            if (p.powerType === "speed") {
+              score += 8;
+              this.centerMessage("SPEED BONUS +8", "#facc15");
+              this.burst(p.x, p.y, 0xfacc15, true);
+            }
+            p.destroy();
+            this.updateHealthBar();
+            syncHud("Powerup collected.");
+          }
+        });
+      }
+
       eatCorrect(f) {
         const gained = 10 + combo * 2;
         score += gained;
         combo += 1;
         health = Math.min(100, health + 8);
-        level = Math.min(10, level + 1);
+        level = Math.min(12, level + 1);
         this.burst(f.x, f.y, 0x22c55e, true);
         this.floatText(f.x, f.y - 60, `+${gained} SCORE`, "#22c55e");
-        this.centerMessage("CORRECT FISH EATEN!", "#22c55e");
+        if (combo >= 5) this.centerMessage(`COMBO x${combo}!`, "#facc15");
+        else this.centerMessage("CORRECT FISH EATEN!", "#22c55e");
         f.label?.destroy();
         f.destroy();
         this.updateHealthBar();
@@ -448,15 +555,15 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         const cam = this.cameras.main;
         const sx = correct.x - cam.scrollX;
         const sy = correct.y - cam.scrollY;
-        this.pointerStar.x = Phaser.Math.Clamp(sx, 65, cam.width - 65);
-        this.pointerStar.y = Phaser.Math.Clamp(sy, 110, cam.height - 65);
+        this.pointerStar.x = Phaser.Math.Clamp(sx, 70, cam.width - 70);
+        this.pointerStar.y = Phaser.Math.Clamp(sy, 110, cam.height - 70);
       }
 
       updateMiniMap() {
         if (!this.map) return;
         this.miniDots.forEach((d) => d.destroy());
         this.miniDots = [];
-        const mapW = 250, mapH = 150, sx = mapW / WORLD_W, sy = mapH / WORLD_H;
+        const mapW = 310, mapH = 178, sx = mapW / WORLD_W, sy = mapH / WORLD_H;
         const dot = (x, y, color, r = 4) => {
           const d = this.add.circle(-mapW / 2 + x * sx, -mapH / 2 + y * sy, r, color);
           this.map.add(d); this.miniDots.push(d);
@@ -466,11 +573,12 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         if (correct) dot(correct.x, correct.y, 0xfacc15, 5);
         this.predators.forEach((p) => dot(p.x, p.y, 0xef4444, 3));
         this.coins.filter((c) => c.active).forEach((c) => dot(c.x, c.y, 0xfacc15, 2));
+        this.powerups.filter((p) => p.active).forEach((p) => dot(p.x, p.y, 0x22c55e, 2));
       }
 
       updateHealthBar() {
         const ratio = Phaser.Math.Clamp(health / 100, 0, 1);
-        this.healthBar.width = 260 * ratio;
+        this.healthBar.width = 310 * ratio;
         if (health > 60) this.healthBar.setFillStyle(0x22c55e);
         else if (health > 30) this.healthBar.setFillStyle(0xfacc15);
         else this.healthBar.setFillStyle(0xef4444);
@@ -489,7 +597,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
       }
 
       centerMessage(text, color) {
-        const item = this.add.text(640, 130, text, { fontSize: "30px", color, fontFamily: "Arial", fontStyle: "bold", stroke: "#000", strokeThickness: 6 }).setOrigin(0.5).setScrollFactor(0).setDepth(550);
+        const item = this.add.text(800, 130, text, { fontSize: "30px", color, fontFamily: "Arial", fontStyle: "bold", stroke: "#000", strokeThickness: 6 }).setOrigin(0.5).setScrollFactor(0).setDepth(550);
         this.tweens.add({ targets: item, y: 90, alpha: 0, scale: 1.15, duration: 900, onComplete: () => item.destroy() });
       }
 
@@ -499,7 +607,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         this.clearAnswers();
         const xp = Math.max(20, Math.round(score / 2));
         const coins = Math.max(10, Math.round(score / 8));
-        const panel = this.add.container(640, 360).setScrollFactor(0).setDepth(700);
+        const panel = this.add.container(800, 450).setScrollFactor(0).setDepth(700);
         const bg = this.add.rectangle(0, 0, 700, 390, 0x0f172a, 0.97);
         bg.setStrokeStyle(3, 0x38bdf8, 0.65);
         panel.add(bg);
@@ -511,7 +619,7 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
         syncHud("Game complete.");
         if (!rewardSentRef.current && typeof rewardRef.current === "function") {
           rewardSentRef.current = true;
-          rewardRef.current({ xp, coins, score, total: safeQuestions.length, mode: "fish-hungry-shark-v2" });
+          rewardRef.current({ xp, coins, score, total: safeQuestions.length, mode: "fish-ocean-advanced-v3" });
         }
       }
     }
@@ -519,8 +627,8 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
     const config = {
       type: Phaser.AUTO,
       parent: containerRef.current,
-      width: 1280,
-      height: 720,
+      width: 1600,
+      height: 900,
       backgroundColor: "#020617",
       scene: OceanScene,
       physics: { default: "arcade", arcade: { gravity: { y: 0 }, debug: false } },
@@ -538,17 +646,27 @@ export default function FishGame({ questions = [], topic = "Study Topic", onExit
 
   return (
     <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white">
-      <div className="flex h-screen w-screen flex-col">
+      <div className="portrait-warning flex h-screen w-screen items-center justify-center bg-slate-950 p-6 text-center text-white landscape:hidden">
+        <div className="max-w-sm rounded-3xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
+          <div className="text-6xl">📱↔️</div>
+          <h1 className="mt-4 text-2xl font-black">Rotate Your Phone</h1>
+          <p className="mt-3 text-slate-300">Ocean Survival is designed like a real game. Turn your phone to landscape mode for best gameplay.</p>
+          <button onClick={onExit} className="mt-6 rounded-2xl bg-red-500 px-5 py-3 font-bold text-white hover:bg-red-600">Exit Game</button>
+        </div>
+      </div>
+
+      <div className="hidden h-screen w-screen flex-col landscape:flex">
         <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-black sm:text-3xl">🐟 Ocean Survival Learning</h1>
-            <p className="text-xs text-slate-400 sm:text-sm">{topic || "Study Topic"} · chase answer fish · avoid predators · grow stronger</p>
+            <h1 className="text-xl font-black sm:text-3xl">🐟 Ocean Survival Advanced</h1>
+            <p className="text-xs text-slate-400 sm:text-sm">{topic || "Study Topic"} · large ocean map · predators · minimap · powerups</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold sm:text-sm">Score: {hud.score}</div>
-            <div className="rounded-xl bg-green-400/10 px-3 py-2 text-xs font-bold text-green-300 sm:text-sm">Health: {hud.health}</div>
+            <div className="rounded-xl bg-green-400/10 px-3 py-2 text-xs font-bold text-green-300 sm:text-sm">Health: {Math.round(hud.health)}</div>
             <div className="rounded-xl bg-blue-400/10 px-3 py-2 text-xs font-bold text-blue-300 sm:text-sm">Combo: {hud.combo}</div>
             <div className="rounded-xl bg-purple-400/10 px-3 py-2 text-xs font-bold text-purple-300 sm:text-sm">Level: {hud.level}</div>
+            <div className="rounded-xl bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-300 sm:text-sm">Shield: {hud.shield}</div>
             <div className="rounded-xl bg-yellow-400/10 px-3 py-2 text-xs font-bold text-yellow-300 sm:text-sm">Q: {hud.current}/{hud.total}</div>
             <button onClick={onExit} className="rounded-xl bg-red-500 px-4 py-2 text-xs font-bold text-white hover:bg-red-600 sm:text-sm">Exit</button>
           </div>
