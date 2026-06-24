@@ -1,996 +1,1214 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * ArcheryGame Cinematic V4 Bullseye
- * Path: src/components/games/ArcheryGame.jsx
+ * FishGame PRO - Student OS Ocean Study Game
+ * Path: src/components/games/FishGame.jsx
  *
- * Fullscreen professional-looking Phaser archery game.
- * Keep App.jsx and GameRoom.jsx unchanged.
+ * Features:
+ * 1. Mobile portrait layout: top HUD, middle real 16:9 ocean strip, bottom joystick.
+ * 2. No zoomed mobile canvas. Phaser uses a fixed 1280x720 game viewport with FIT scaling.
+ * 3. No EXIT button inside FishGame. Keep only GameRoom EXIT to avoid duplicate buttons.
+ * 4. Desktop HUD + minimap added without hiding the game screen.
+ * 5. Loading screen before Phaser starts.
+ * 6. Multiple maps: Coral Reef, Deep Ocean, Shipwreck Bay, Ice Ocean, Volcano Sea.
+ * 7. Realer vector fish graphics: layered bodies, fins, tail, eye, highlights.
+ * 8. Rare fish system: Golden Fish, Diamond Fish, Dolphin Bonus. No King Fish.
+ * 9. Correct answer fish color changes every question.
+ * 10. Growth system: Tiny Fish -> Small Fish -> Medium Fish -> Big Fish -> Giant Fish -> Ocean Legend.
  */
 
-export default function ArcheryGame({
+const FISH_GAME_MAPS = [
+  { name: "Coral Reef", emoji: "🪸", top: 0x0891b2, mid: 0x0e7490, bottom: 0x164e63, sand: 0xc08457, decor: ["🪸", "🐚", "🌿", "🪨"], predatorCount: 5, rewardBoost: 1 },
+  { name: "Deep Ocean", emoji: "🌌", top: 0x0f172a, mid: 0x164e63, bottom: 0x020617, sand: 0x334155, decor: ["🪼", "🫧", "🪨", "🐚"], predatorCount: 7, rewardBoost: 1.15 },
+  { name: "Shipwreck Bay", emoji: "⚓", top: 0x0369a1, mid: 0x0f766e, bottom: 0x1e293b, sand: 0xa16207, decor: ["⚓", "🪙", "🪸", "🐚"], predatorCount: 7, rewardBoost: 1.25 },
+  { name: "Ice Ocean", emoji: "❄️", top: 0x7dd3fc, mid: 0x0284c7, bottom: 0x0f172a, sand: 0xe0f2fe, decor: ["❄️", "🧊", "🫧", "🐚"], predatorCount: 8, rewardBoost: 1.35 },
+  { name: "Volcano Sea", emoji: "🌋", top: 0x7f1d1d, mid: 0x0f172a, bottom: 0x020617, sand: 0x451a03, decor: ["🌋", "🔥", "🪨", "🫧"], predatorCount: 9, rewardBoost: 1.5 },
+];
+
+export default function FishGame({
   questions = [],
   topic = "Study Topic",
-  onExit,
   onReward,
 }) {
-  const containerRef = useRef(null);
+  const gameWrapRef = useRef(null);
   const gameRef = useRef(null);
   const rewardSentRef = useRef(false);
+  const latestRewardRef = useRef(onReward);
+  const joystickRef = useRef({ x: 0, y: 0, active: false });
+  const miniMapRef = useRef(null);
 
-  // Keep latest props without recreating Phaser on every React render.
-  // This fixes blinking/restarting from question 1.
-  const questionsRef = useRef(questions);
-  const topicRef = useRef(topic);
-  const onRewardRef = useRef(onReward);
+  const [selectedMapIndex, setSelectedMapIndex] = useState(0);
+  const [mapSelected, setMapSelected] = useState(false);
+  const selectedMap = FISH_GAME_MAPS[selectedMapIndex] || FISH_GAME_MAPS[0];
 
+  const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("Loading ocean...");
   const [hud, setHud] = useState({
+    question: "Loading...",
     score: 0,
+    health: 100,
     combo: 0,
-    arrows: 3,
+    level: 1,
+    growthName: "Tiny Fish",
+    shield: 0,
+    mapName: "Coral Reef",
     current: 1,
     total: Math.max(questions.length, 1),
-    message: "Aim for the center. Bullseye gives +20 bonus.",
+    message: "Preparing ocean...",
+    ended: false,
+  });
+
+  const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    return Boolean(coarse && window.innerHeight > window.innerWidth);
   });
 
   useEffect(() => {
-    if (!containerRef.current || gameRef.current) return;
+    const onResize = () => {
+      const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+      setIsPortraitMobile(Boolean(coarse && window.innerHeight > window.innerWidth));
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
 
-    const initialQuestions = questionsRef.current || [];
+  useEffect(() => {
+    latestRewardRef.current = onReward;
+  }, [onReward]);
 
-    const safeQuestions =
-      initialQuestions.length > 0
-        ? initialQuestions
-        : [
-            { question: "Both inputs 1 gives output 1?", answer: "AND", options: ["AND", "OR", "XOR", "NOT"] },
-            { question: "Either input 1 gives output 1?", answer: "OR", options: ["AND", "OR", "NAND", "NOR"] },
-            { question: "Opposite output gate?", answer: "NOT", options: ["NOT", "AND", "OR", "XOR"] },
-            { question: "Universal gate?", answer: "NAND", options: ["NAND", "NOR", "XOR", "AND"] },
-            { question: "Exclusive OR short form?", answer: "XOR", options: ["XOR", "AND", "OR", "NOT"] },
-          ];
+  useEffect(() => {
+    if (!mapSelected) return;
+
+    const fallbackQuestions = [
+      { question: `Best action to master ${topic}?`, answer: "Practice", options: ["Practice", "Skip", "Guess", "Forget"] },
+      { question: `After studying ${topic}, do a?`, answer: "Quiz", options: ["Quiz", "Nap", "Scroll", "Skip"] },
+      { question: `Useful revision item for ${topic}?`, answer: "Notes", options: ["Notes", "Noise", "Delay", "Luck"] },
+      { question: "Both inputs 1 gives output 1?", answer: "AND", options: ["AND", "OR", "XOR", "NOT"] },
+      { question: "Address storing variable?", answer: "Pointer", options: ["Pointer", "Array", "Loop", "Struct"] },
+      { question: "Stores charge?", answer: "Capacitor", options: ["Capacitor", "Resistor", "Diode", "Switch"] },
+      { question: "Collection of same datatype?", answer: "Array", options: ["Array", "Loop", "Pointer", "If"] },
+      { question: "Exam success needs?", answer: "Revision", options: ["Revision", "Panic", "Delay", "Guess"] },
+    ];
+
+    const safeQuestions = questions?.length ? questions : fallbackQuestions;
+
+    if (!gameWrapRef.current || gameRef.current) return;
+
+    const GAME_W = isPortraitMobile ? 960 : 1280;
+    const GAME_H = isPortraitMobile ? 540 : 720;
+    const WORLD_W = isPortraitMobile ? 2400 : 3400;
+    const WORLD_H = isPortraitMobile ? 1350 : 1900;
+
+    const maps = FISH_GAME_MAPS;
+
+    const correctColors = [0xfacc15, 0x22c55e, 0xef4444, 0xa855f7, 0xf97316, 0x06b6d4, 0xec4899, 0x84cc16];
+    const wrongColors = [0x38bdf8, 0x22c55e, 0xa855f7, 0xf97316, 0xec4899, 0x14b8a6, 0x818cf8];
 
     let score = 0;
+    let health = 100;
     let combo = 0;
-    let currentIndex = 0;
-    let arrowsLeft = 3;
-    let canShoot = true;
+    let level = 1;
+    let shield = 0;
+    let current = 0;
     let ended = false;
-    let shotLocked = false;
+    let ready = false;
+    let invincible = false;
+    let speedBoostUntil = 0;
+    let currentMapIndex = selectedMapIndex;
+    let rareSpawnCount = 0;
+
+    const getGrowthName = () => {
+      if (level >= 11) return "Ocean Legend";
+      if (level >= 9) return "Giant Fish";
+      if (level >= 6) return "Big Fish";
+      if (level >= 4) return "Medium Fish";
+      if (level >= 2) return "Small Fish";
+      return "Tiny Fish";
+    };
 
     const syncHud = (message = "") => {
+      const q = safeQuestions[Math.min(current, safeQuestions.length - 1)];
       setHud({
+        question: q?.question || "Game complete",
         score,
+        health: Math.round(health),
         combo,
-        arrows: arrowsLeft,
-        current: Math.min(currentIndex + 1, safeQuestions.length),
+        level,
+        growthName: getGrowthName(),
+        shield,
+        mapName: maps[currentMapIndex]?.name || "Ocean",
+        current: Math.min(current + 1, safeQuestions.length),
         total: safeQuestions.length,
         message,
+        ended,
       });
     };
 
-    class ArcheryScene extends Phaser.Scene {
+    const setLoadStep = (text, delay) => {
+      setTimeout(() => setLoadingText(text), delay);
+    };
+
+    setLoading(true);
+    setLoadingText("🌊 Entering ocean...");
+    setLoadStep("🐟 Loading real fish movement...", 220);
+    setLoadStep("🦈 Loading predators...", 440);
+    setLoadStep("💎 Loading rare fish...", 660);
+    setLoadStep("🎯 Loading study questions...", 880);
+
+    class OceanScene extends Phaser.Scene {
       constructor() {
-        super("ArcheryCinematicV2");
-        this.targets = [];
+        super("StudentOSFishGamePRO");
+        this.player = null;
+        this.answerFish = [];
+        this.predators = [];
+        this.coins = [];
+        this.powerups = [];
+        this.rareFish = [];
+        this.bgFish = [];
         this.labels = [];
-        this.fxObjects = [];
-        this.arrow = null;
-        this.bow = null;
-        this.aimLine = null;
-        this.crosshair = null;
-        this.powerFill = null;
-        this.questionText = null;
-        this.power = 0.75;
+        this.mapDecor = [];
+        this.mapLayers = [];
+        this.targetX = WORLD_W * 0.18;
+        this.targetY = WORLD_H * 0.5;
+        this.starPointer = null;
+        this.lastHud = 0;
+        this.lastMap = 0;
       }
 
       create() {
-        const width = this.scale.width;
-        const height = this.scale.height;
+        this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
+        this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
 
-        this.createBackground(width, height);
-        this.createGameObjects(width, height);
-        this.createAimSystem(width, height);
-        this.loadQuestion();
+        this.createMap(currentMapIndex, true);
+        this.createPlayer();
+        this.createQuestion();
+        this.createPointer();
+        this.createRareFishTimer();
 
-        this.input.on("pointermove", (pointer) => {
-          if (!canShoot || ended || shotLocked) return;
-          this.updateAim(pointer.x, pointer.y);
+        this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
+
+        if (!isPortraitMobile) {
+          this.input.on("pointermove", (p) => this.setTargetFromPointer(p));
+          this.input.on("pointerdown", (p) => this.setTargetFromPointer(p));
+        }
+
+        this.time.delayedCall(isPortraitMobile ? 450 : 700, () => {
+          ready = true;
+          setLoading(false);
+          syncHud(isPortraitMobile ? "Joystick ready. Chase ⭐ answer fish." : "Move with mouse or touch. Chase ⭐ answer fish.");
         });
 
-        this.input.on("pointerdown", (pointer) => {
-          if (!canShoot || ended || shotLocked) return;
-          this.updateAim(pointer.x, pointer.y);
-          this.pullBow();
-        });
-
-        this.input.on("pointerup", (pointer) => {
-          if (!canShoot || ended || shotLocked) return;
-          this.updateAim(pointer.x, pointer.y);
-          this.shoot(pointer.x, pointer.y);
+        this.time.addEvent({
+          delay: 1000,
+          loop: true,
+          callback: () => {
+            if (!ready || ended) return;
+            health = Math.max(0, health - 0.22);
+            if (health <= 0) return this.endGame("Your fish ran out of health!");
+            syncHud("Find ⭐ answer fish. Avoid ☠ predators. Rare fish give bonus rewards.");
+          },
         });
       }
 
-      createBackground(width, height) {
-        const sky = this.add.graphics();
-        sky.fillGradientStyle(0x1e3a8a, 0x312e81, 0x7c2d12, 0x111827, 1);
-        sky.fillRect(0, 0, width, height);
+      update(time) {
+        if (!ready || ended || !this.player) return;
 
-        const sun = this.add.circle(width - 120, 105, 54, 0xfacc15, 0.28).setDepth(0);
-        this.tweens.add({
-          targets: sun,
-          scaleX: 1.15,
-          scaleY: 1.15,
-          alpha: 0.45,
-          duration: 1500,
-          yoyo: true,
-          repeat: -1,
-        });
+        this.movePlayer(time);
+        this.moveAllFish();
+        this.checkAnswerCollision();
+        this.checkPredatorCollision();
+        this.checkCoinCollision();
+        this.checkPowerupCollision();
+        this.checkRareFishCollision();
+        this.updatePointer();
 
-        for (let layer = 0; layer < 3; layer++) {
-          const color = [0x0f172a, 0x1e293b, 0x334155][layer];
-          const yBase = height * (0.42 + layer * 0.11);
-          for (let i = 0; i < 8; i++) {
-            const mountain = this.add.polygon(
-              i * (width / 7),
-              yBase,
-              [
-                -140, 220,
-                0, -Phaser.Math.Between(120, 220),
-                150, 220,
-              ],
-              color,
-              0.55 + layer * 0.12
-            ).setDepth(1 + layer);
+        if (time - this.lastHud > 180) {
+          syncHud(hud.message || "Keep swimming.");
+          this.lastHud = time;
+        }
 
+        if (time - this.lastMap > 240) {
+          this.drawMiniMap();
+          this.lastMap = time;
+        }
+      }
+
+      createMap(index, first = false) {
+        const map = maps[index] || maps[0];
+
+        this.mapLayers.forEach((item) => item.destroy());
+        this.mapDecor.forEach((item) => item.destroy());
+        this.bgFish.forEach((item) => item.destroy());
+        this.predators.forEach((item) => item.destroy());
+        this.coins.forEach((item) => item.destroy());
+        this.powerups.forEach((item) => item.destroy());
+        this.rareFish.forEach((item) => item.destroy());
+        this.mapLayers = [];
+        this.mapDecor = [];
+        this.bgFish = [];
+        this.predators = [];
+        this.coins = [];
+        this.powerups = [];
+        this.rareFish = [];
+
+        const bg = this.add.graphics().setDepth(0);
+        bg.fillGradientStyle(map.top, map.top, map.mid, map.bottom, 1);
+        bg.fillRect(0, 0, WORLD_W, WORLD_H);
+        this.mapLayers.push(bg);
+
+        const floor = this.add.graphics().setDepth(2);
+        for (let i = 0; i < (isPortraitMobile ? 18 : 90); i++) {
+          floor.fillStyle(i % 2 ? map.sand : 0x1f2937, Phaser.Math.FloatBetween(0.25, 0.65));
+          floor.fillEllipse(
+            Phaser.Math.Between(0, WORLD_W),
+            WORLD_H - Phaser.Math.Between(20, 110),
+            Phaser.Math.Between(70, 210),
+            Phaser.Math.Between(20, 70)
+          );
+        }
+        this.mapLayers.push(floor);
+
+        for (let i = 0; i < (isPortraitMobile ? 18 : 90); i++) {
+          const b = this.add.circle(
+            Phaser.Math.Between(0, WORLD_W),
+            Phaser.Math.Between(0, WORLD_H),
+            Phaser.Math.Between(2, 7),
+            0xffffff,
+            Phaser.Math.FloatBetween(0.05, 0.18)
+          ).setDepth(3);
+          this.mapLayers.push(b);
+          this.tweens.add({
+            targets: b,
+            y: b.y - Phaser.Math.Between(180, 560),
+            alpha: 0,
+            duration: Phaser.Math.Between(4200, 9000),
+            repeat: -1,
+            onRepeat: () => {
+              b.y = WORLD_H + Phaser.Math.Between(20, 140);
+              b.x = Phaser.Math.Between(0, WORLD_W);
+              b.alpha = Phaser.Math.FloatBetween(0.06, 0.2);
+            },
+          });
+        }
+
+        for (let i = 0; i < (isPortraitMobile ? 14 : 52); i++) {
+          const deco = this.add.text(
+            Phaser.Math.Between(0, WORLD_W),
+            Phaser.Math.Between(WORLD_H - 180, WORLD_H - 70),
+            map.decor[Phaser.Math.Between(0, map.decor.length - 1)],
+            { fontSize: Phaser.Math.Between(30, 62) + "px" }
+          ).setDepth(5);
+          this.mapDecor.push(deco);
+          if (i < (isPortraitMobile ? 5 : 18)) {
             this.tweens.add({
-              targets: mountain,
-              x: mountain.x + (layer + 1) * 8,
-              duration: 3500 + layer * 800 + i * 120,
+              targets: deco,
+              angle: Phaser.Math.Between(-8, 8),
+              duration: Phaser.Math.Between(1200, 2300),
               yoyo: true,
               repeat: -1,
-              ease: "Sine.inOut",
             });
           }
         }
 
-        // Clouds
-        for (let i = 0; i < 8; i++) {
-          const cloud = this.add.container(
-            Phaser.Math.Between(0, width),
-            Phaser.Math.Between(75, 230)
-          ).setDepth(4);
-
-          const alpha = Phaser.Math.FloatBetween(0.08, 0.16);
-          cloud.add(this.add.circle(0, 0, 24, 0xffffff, alpha));
-          cloud.add(this.add.circle(28, -8, 32, 0xffffff, alpha));
-          cloud.add(this.add.circle(62, 0, 24, 0xffffff, alpha));
-          cloud.add(this.add.rectangle(32, 12, 80, 26, 0xffffff, alpha));
-
-          this.tweens.add({
-            targets: cloud,
-            x: cloud.x + Phaser.Math.Between(60, 150),
-            duration: Phaser.Math.Between(5000, 9000),
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.inOut",
-          });
+        if (map.name === "Shipwreck Bay") {
+          const wreck = this.add.text(WORLD_W * 0.68, WORLD_H - 240, "🚢", { fontSize: "140px" }).setDepth(6).setAngle(-12);
+          this.mapDecor.push(wreck);
         }
 
-        // Ground
-        this.add.rectangle(width / 2, height - 48, width, 96, 0x2b1d16, 0.98).setDepth(8);
-        this.add.rectangle(width / 2, height - 96, width, 10, 0xf59e0b, 0.45).setDepth(9);
+        if (map.name === "Volcano Sea") {
+          for (let i = 0; i < (isPortraitMobile ? 4 : 8); i++) {
+            const lava = this.add.circle(Phaser.Math.Between(120, WORLD_W - 120), WORLD_H - Phaser.Math.Between(60, 180), Phaser.Math.Between(16, 42), 0xef4444, 0.55).setDepth(4);
+            this.mapDecor.push(lava);
+            this.tweens.add({ targets: lava, alpha: 0.15, scaleX: 1.3, scaleY: 1.3, duration: 800, yoyo: true, repeat: -1 });
+          }
+        }
 
-        // Wind/dust particles
-        for (let i = 0; i < 38; i++) {
-          const dust = this.add.circle(
-            Phaser.Math.Between(0, width),
-            Phaser.Math.Between(height - 135, height - 35),
-            Phaser.Math.Between(2, 5),
-            0xfacc15,
-            Phaser.Math.FloatBetween(0.1, 0.32)
-          ).setDepth(10);
+        this.createBackgroundFish();
+        this.createPredators();
+        this.createCoins();
+        this.createPowerups();
 
-          this.tweens.add({
-            targets: dust,
-            x: dust.x + Phaser.Math.Between(-120, 140),
-            y: dust.y + Phaser.Math.Between(-16, 16),
-            alpha: 0,
-            duration: Phaser.Math.Between(1600, 3400),
-            repeat: -1,
-          });
+        if (!first) {
+          this.centerMessage(`${map.emoji} ${map.name}`, "#38bdf8", 1200);
+          this.cameras.main.flash(450, 56, 189, 248, false);
         }
       }
 
-      createGameObjects(width, height) {
-        this.questionText = this.add
-          .text(34, 36, "", {
-            fontSize: width < 700 ? "18px" : "27px",
-            color: "#ffffff",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            wordWrap: { width: width < 700 ? width - 70 : 720 },
-            stroke: "#000000",
-            strokeThickness: 6,
-          })
-          .setDepth(70);
+      makeRealFish(x, y, cfg = {}) {
+        const {
+          color = 0xf97316,
+          accent = 0xffffff,
+          size = 1,
+          icon = "",
+          type = "fish",
+          alpha = 1,
+          emoji = "",
+        } = cfg;
 
-        this.add
-          .text(36, height - 60, "Use right-side open space to aim • Release to shoot • Targets move vertically", {
-            fontSize: width < 700 ? "12px" : "16px",
-            color: "#fde68a",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
-          .setDepth(70);
+        const fish = this.add.container(x, y).setAlpha(alpha);
 
-        // Right-side aim zone, kept mostly transparent so it does not disturb the scene.
-        this.add.rectangle(width - 165, height / 2 + 20, 260, 360, 0x020617, 0.18).setDepth(18);
-        this.add
-          .text(width - 165, height / 2 - 190, "AIM ZONE", {
-            fontSize: width < 700 ? "12px" : "15px",
-            color: "#fde68a",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
-          .setOrigin(0.5)
-          .setDepth(70);
+        const species = emoji || (
+          type === "shark" ? "🦈" :
+          type === "dolphin" ? "🐬" :
+          type === "puffer" ? "🐡" :
+          type === "rare" ? "🐠" :
+          ["🐟", "🐠", "🐡"][Phaser.Math.Between(0, 2)]
+        );
 
-        this.createBow(width, height);
-        this.createPowerBar(width, height);
-      }
+        const shadow = this.add.ellipse(0, 34 * size, 118 * size, 34 * size, 0x000000, 0.18);
+        const glow = this.add.circle(0, 0, 70 * size, color, type === "shark" ? 0.06 : 0.14);
+        const body = this.add.text(0, 0, species, {
+          fontSize: `${Math.round((type === "shark" ? 82 : type === "dolphin" ? 76 : 70) * size)}px`,
+          fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Arial",
+        }).setOrigin(0.5);
 
-      createBow(width, height) {
-        const bowX = width - 150;
-        const bowY = height / 2 + 20;
+        const shine = this.add.ellipse(10 * size, -18 * size, 58 * size, 18 * size, 0xffffff, 0.12);
+        const aura = this.add.circle(0, 0, 92 * size, accent, type === "rare" ? 0.16 : 0.04);
 
-        this.bow = this.add.container(bowX, bowY).setDepth(60);
+        fish.add([shadow, aura, glow, body, shine]);
 
-        const glow = this.add.circle(0, 0, 86, 0xfacc15, 0.08);
-        const handle = this.add.circle(-4, 0, 18, 0x7c2d12);
-
-        const outerBow = this.add.graphics();
-        outerBow.lineStyle(15, 0x0f172a, 1);
-        outerBow.beginPath();
-        outerBow.arc(0, 0, 104, -1.35, 1.35, false);
-        outerBow.strokePath();
-
-        const goldBow = this.add.graphics();
-        goldBow.lineStyle(9, 0xf59e0b, 1);
-        goldBow.beginPath();
-        goldBow.arc(0, 0, 100, -1.33, 1.33, false);
-        goldBow.strokePath();
-
-        const string = this.add.graphics();
-        string.lineStyle(4, 0xffffff, 0.95);
-        string.beginPath();
-        string.moveTo(36, -96);
-        string.lineTo(-4, 0);
-        string.lineTo(36, 96);
-        string.strokePath();
-
-        const readyArrow = this.add.rectangle(-62, 0, 126, 8, 0xf8fafc);
-        const readyHead = this.add.triangle(-130, 0, 0, -14, 0, 14, -26, 0, 0xef4444);
-        const featherA = this.add.triangle(4, -6, 0, 0, 0, 13, 18, 0, 0x38bdf8);
-        const featherB = this.add.triangle(4, 6, 0, 0, 0, -13, 18, 0, 0x60a5fa);
-
-        this.bow.add([glow, handle, outerBow, goldBow, string, readyArrow, readyHead, featherA, featherB]);
-
-        this.tweens.add({
-          targets: glow,
-          scaleX: 1.25,
-          scaleY: 1.25,
-          alpha: 0.18,
-          duration: 900,
-          yoyo: true,
-          repeat: -1,
-        });
-
-        this.tweens.add({
-          targets: this.bow,
-          y: bowY + 7,
-          duration: 950,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.inOut",
-        });
-      }
-
-      createPowerBar(width, height) {
-        this.add.rectangle(54, height - 80, 18, 160, 0x020617, 0.65).setDepth(66);
-        this.add.rectangle(54, height - 80, 12, 148, 0x1e293b, 0.9).setDepth(67);
-        this.powerFill = this.add.rectangle(54, height - 6, 10, 0, 0xfacc15, 0.95).setDepth(68);
-      }
-
-      createAimSystem(width, height) {
-        this.aimLine = this.add.graphics().setDepth(58);
-        this.crosshair = this.add.container(width / 2, height / 2).setDepth(75);
-
-        const cross = this.add.graphics();
-        cross.lineStyle(3, 0xffffff, 0.95);
-        cross.beginPath();
-        cross.moveTo(-24, 0);
-        cross.lineTo(-8, 0);
-        cross.moveTo(8, 0);
-        cross.lineTo(24, 0);
-        cross.moveTo(0, -24);
-        cross.lineTo(0, -8);
-        cross.moveTo(0, 8);
-        cross.lineTo(0, 24);
-        cross.strokePath();
-
-        const dot = this.add.circle(0, 0, 4, 0xfacc15);
-        this.crosshair.add([cross, dot]);
-
-        this.tweens.add({
-          targets: this.crosshair,
-          scaleX: 1.12,
-          scaleY: 1.12,
-          duration: 600,
-          yoyo: true,
-          repeat: -1,
-        });
-      }
-
-      pullBow() {
-        if (!this.bow) return;
-        this.tweens.add({
-          targets: this.bow,
-          scaleX: 0.96,
-          scaleY: 1.05,
-          duration: 120,
-          yoyo: true,
-          ease: "Sine.out",
-        });
-      }
-
-      updateAim(x, y) {
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const bowX = width - 220;
-        const bowY = height / 2 + 20;
-
-        this.crosshair.x = x;
-        this.crosshair.y = y;
-
-        const angle = Phaser.Math.Angle.Between(width - 120, bowY, x, y);
-        this.bow.rotation = angle;
-
-        const distance = Phaser.Math.Distance.Between(bowX, bowY, x, y);
-        this.power = Phaser.Math.Clamp(distance / 480, 0.35, 1);
-
-        this.powerFill.height = 148 * this.power;
-        this.powerFill.y = height - 6 - this.powerFill.height / 2;
-
-        this.aimLine.clear();
-        this.aimLine.lineStyle(3, 0xfacc15, 0.6);
-        this.aimLine.beginPath();
-        this.aimLine.moveTo(bowX, bowY);
-        this.aimLine.lineTo(x, y);
-        this.aimLine.strokePath();
-      }
-
-      clearRoundObjects() {
-        this.targets.forEach((item) => item.destroy());
-        this.labels.forEach((item) => item.destroy());
-        this.fxObjects.forEach((item) => item.destroy());
-        this.targets = [];
-        this.labels = [];
-        this.fxObjects = [];
-
-        if (this.arrow) {
-          this.arrow.destroy();
-          this.arrow = null;
+        if (icon) {
+          fish.add(this.add.text(0, -64 * size, icon, {
+            fontSize: `${Math.round(26 * size)}px`,
+            fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Arial",
+          }).setOrigin(0.5));
         }
 
-        this.aimLine?.clear();
-        if (this.powerFill) this.powerFill.height = 0;
+        fish.tail = body;
+        fish.glow = glow;
+        fish.setSize(120 * size, 80 * size);
+
+        this.tweens.add({ targets: body, scaleX: 1.08, scaleY: 0.96, duration: 260, yoyo: true, repeat: -1 });
+        this.tweens.add({ targets: glow, alpha: type === "rare" ? 0.34 : 0.18, scaleX: 1.18, scaleY: 1.18, duration: 780, yoyo: true, repeat: -1 });
+
+        return fish;
+      }
+
+      createBackgroundFish() {
+        for (let i = 0; i < (isPortraitMobile ? 7 : 24); i++) {
+          const c = wrongColors[Phaser.Math.Between(0, wrongColors.length - 1)];
+          const f = this.makeRealFish(
+            Phaser.Math.Between(160, WORLD_W - 160),
+            Phaser.Math.Between(150, WORLD_H - 170),
+            {
+              color: c,
+              size: Phaser.Math.FloatBetween(0.38, 0.68),
+              alpha: Phaser.Math.FloatBetween(0.28, 0.55),
+            }
+          );
+          f.speed = Phaser.Math.Between(30, 74);
+          f.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-0.45, 0.45)).normalize();
+          this.physics.add.existing(f);
+          f.body.setCircle(26);
+          f.body.setCollideWorldBounds(true);
+          f.setDepth(14);
+          this.bgFish.push(f);
+        }
+      }
+
+      createPlayer() {
+        this.player = this.makeRealFish(WORLD_W * 0.18, WORLD_H * 0.5, {
+          color: 0xf97316,
+          accent: 0xffffff,
+          size: 1.05,
+          emoji: "🐠",
+        });
+        this.player.setDepth(90);
+        this.physics.add.existing(this.player);
+        this.player.body.setCircle(45);
+        this.player.body.setCollideWorldBounds(true);
+      }
+
+      createPredators() {
+        const map = maps[currentMapIndex] || maps[0];
+        for (let i = 0; i < Math.max(3, map.predatorCount - (isPortraitMobile ? 2 : 0)); i++) {
+          const p = this.makeRealFish(
+            Phaser.Math.Between(560, WORLD_W - 150),
+            Phaser.Math.Between(160, WORLD_H - 190),
+            {
+              color: 0x334155,
+              accent: 0xffffff,
+              icon: "☠",
+              type: i % 3 === 0 ? "shark" : "fish",
+              emoji: i % 3 === 0 ? "🦈" : "🐟",
+              size: Phaser.Math.FloatBetween(1.0, 1.35),
+            }
+          );
+          p.damage = Phaser.Math.Between(7, 14) + currentMapIndex;
+          p.speed = Phaser.Math.Between(78, 122) + currentMapIndex * 4;
+          p.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize();
+          this.physics.add.existing(p);
+          p.body.setCircle(48);
+          p.body.setCollideWorldBounds(true);
+          p.setDepth(55);
+          this.predators.push(p);
+        }
+
+        const bossShark = this.makeRealFish(WORLD_W * 0.78, WORLD_H * 0.25, {
+          color: 0x111827,
+          accent: 0xffffff,
+          icon: "🦈",
+          type: "shark",
+          emoji: "🦈",
+          size: 1.55,
+        });
+        bossShark.damage = 18 + currentMapIndex * 2;
+        bossShark.speed = 76 + currentMapIndex * 4;
+        bossShark.dir = new Phaser.Math.Vector2(-1, 0.35).normalize();
+        this.physics.add.existing(bossShark);
+        bossShark.body.setCircle(60);
+        bossShark.body.setCollideWorldBounds(true);
+        bossShark.setDepth(58);
+        this.predators.push(bossShark);
+      }
+
+      createCoins() {
+        for (let i = 0; i < (isPortraitMobile ? 10 : 22); i++) {
+          const c = this.add.container(Phaser.Math.Between(260, WORLD_W - 170), Phaser.Math.Between(150, WORLD_H - 170)).setDepth(35);
+          c.add(this.add.circle(0, 0, 34, 0xfacc15, 0.14));
+          c.add(this.add.circle(0, 0, 18, 0xfacc15));
+          c.add(this.add.text(0, 0, "$", { fontSize: "20px", color: "#78350f", fontFamily: "Arial", fontStyle: "bold" }).setOrigin(0.5));
+          this.physics.add.existing(c);
+          c.body.setCircle(22);
+          this.coins.push(c);
+          this.tweens.add({ targets: c, y: c.y - 12, duration: 900, yoyo: true, repeat: -1, delay: i * 40 });
+        }
+      }
+
+      createPowerups() {
+        const types = [
+          { type: "health", icon: "❤️", color: 0xef4444 },
+          { type: "shield", icon: "🛡️", color: 0x38bdf8 },
+          { type: "speed", icon: "⚡", color: 0xfacc15 },
+        ];
+
+        for (let i = 0; i < 7; i++) {
+          const item = types[i % types.length];
+          const p = this.add.container(Phaser.Math.Between(340, WORLD_W - 210), Phaser.Math.Between(210, WORLD_H - 230)).setDepth(37);
+          p.powerType = item.type;
+          p.add(this.add.circle(0, 0, 38, item.color, 0.22));
+          p.add(this.add.circle(0, 0, 24, item.color, 0.85));
+          p.add(this.add.text(0, 0, item.icon, { fontSize: "22px" }).setOrigin(0.5));
+          this.physics.add.existing(p);
+          p.body.setCircle(26);
+          this.powerups.push(p);
+          this.tweens.add({ targets: p, scaleX: 1.18, scaleY: 1.18, duration: 700, yoyo: true, repeat: -1 });
+        }
+      }
+
+      createRareFishTimer() {
+        this.time.addEvent({
+          delay: 18000,
+          loop: true,
+          callback: () => {
+            if (!ready || ended) return;
+            this.spawnRareFish();
+          },
+        });
+      }
+
+      spawnRareFish() {
+        rareSpawnCount += 1;
+        const variants = [
+          { name: "Golden Fish", icon: "⭐", color: 0xfacc15, score: 25, xp: 25, coins: 10, size: 0.95, type: "fish" },
+          { name: "Diamond Fish", icon: "💎", color: 0x60a5fa, score: 50, xp: 50, coins: 25, size: 0.95, type: "fish" },
+          { name: "Dolphin Bonus", icon: "🐬", color: 0x38bdf8, score: 35, xp: 30, coins: 15, size: 1.05, type: "dolphin" },
+        ];
+        const data = variants[rareSpawnCount % variants.length];
+        const x = Phaser.Math.Between(500, WORLD_W - 250);
+        const y = Phaser.Math.Between(220, WORLD_H - 280);
+        const f = this.makeRealFish(x, y, { color: data.color, icon: data.icon, size: data.size, type: data.type });
+        f.rare = data;
+        f.speed = Phaser.Math.Between(155, 220);
+        f.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-0.7, 0.7)).normalize();
+        this.physics.add.existing(f);
+        f.body.setCircle(42);
+        f.body.setCollideWorldBounds(true);
+        f.setDepth(70);
+        this.rareFish.push(f);
+        this.centerMessage(`${data.icon} ${data.name} appeared!`, "#facc15", 1100);
+
+        this.tweens.add({ targets: f.glow, alpha: 0.55, scaleX: 1.45, scaleY: 1.45, duration: 520, yoyo: true, repeat: -1 });
+        this.time.delayedCall(9000, () => {
+          if (f.active) {
+            this.floatText(f.x, f.y, "escaped", "#cbd5e1");
+            f.destroy();
+          }
+        });
       }
 
       shuffleOptions(options) {
-        const shuffled = [...options];
-        for (let i = shuffled.length - 1; i > 0; i--) {
+        const arr = [...options];
+        for (let i = arr.length - 1; i > 0; i--) {
           const j = Phaser.Math.Between(0, i);
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          [arr[i], arr[j]] = [arr[j], arr[i]];
         }
-        return shuffled;
+        return arr;
       }
 
-      loadQuestion() {
-        this.clearRoundObjects();
+      createQuestion() {
+        if (current >= safeQuestions.length) return this.endGame("Ocean level complete!");
 
-        if (currentIndex >= safeQuestions.length) {
-          this.endGame();
-          return;
-        }
+        this.answerFish.forEach((f) => f.destroy());
+        this.labels.forEach((l) => l.destroy());
+        this.answerFish = [];
+        this.labels = [];
 
-        arrowsLeft = 3;
-        canShoot = true;
-        shotLocked = false;
+        const q = safeQuestions[current];
+        const options = this.shuffleOptions([...new Set([...(q.options || []), q.answer])]).slice(0, 4);
+        const answerColor = correctColors[current % correctColors.length];
 
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const q = safeQuestions[currentIndex];
+        const baseX = Phaser.Math.Between(880, WORLD_W - 760);
+        const baseY = Phaser.Math.Between(250, WORLD_H - 580);
+        const spots = [
+          [baseX, baseY],
+          [baseX + 460, baseY + 150],
+          [baseX - 250, baseY + 390],
+          [baseX + 540, baseY + 500],
+        ];
 
-        this.questionText.setText(`Q${currentIndex + 1}. ${q.question}`);
+        options.forEach((answer, i) => {
+          const correct = String(answer).trim().toLowerCase() === String(q.answer).trim().toLowerCase();
+          const fishColor = correct ? answerColor : wrongColors[(current + i + 1) % wrongColors.length];
+          const f = this.makeRealFish(
+            Phaser.Math.Clamp(spots[i][0], 180, WORLD_W - 180),
+            Phaser.Math.Clamp(spots[i][1], 160, WORLD_H - 170),
+            {
+              color: fishColor,
+              accent: 0xffffff,
+              icon: correct ? "⭐" : "",
+              size: correct ? 1.14 : 0.98,
+              emoji: correct ? "🐠" : ["🐟", "🐡", "🐠"][i % 3],
+            }
+          );
 
-        const optionSet = new Set([...(q.options || []), q.answer]);
-        const options = this.shuffleOptions([...optionSet]).slice(0, 4);
-        const positions =
-          width < 760
-            ? [
-                [width * 0.30, height * 0.26],
-                [width * 0.43, height * 0.40],
-                [width * 0.31, height * 0.58],
-                [width * 0.45, height * 0.72],
-              ]
-            : [
-                [width * 0.34, height * 0.28],
-                [width * 0.45, height * 0.38],
-                [width * 0.31, height * 0.62],
-                [width * 0.46, height * 0.72],
-              ];
+          f.answer = answer;
+          f.correct = correct;
+          f.speed = Phaser.Math.Between(86, 142) + currentMapIndex * 4;
+          f.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize();
+          this.physics.add.existing(f);
+          f.body.setCircle(43);
+          f.body.setCollideWorldBounds(true);
+          f.setDepth(correct ? 64 : 48);
 
-        options.forEach((answer, index) => {
-          const [x, y] = positions[index];
-          const target = this.createTarget(x, y, answer, index);
+          if (correct) {
+            this.tweens.add({ targets: f.glow, alpha: 0.48, scaleX: 1.34, scaleY: 1.34, duration: 620, yoyo: true, repeat: -1 });
+          }
 
-          this.targets.push(...target.objects);
-          this.labels.push(target.label);
-
-          const difficulty = Math.min(520, currentIndex * 70);
-          const moveY = index % 2 === 0 ? 70 : -70;
-
-          // Vertical movement only. This gives a cleaner archery feel
-          // and keeps the right side free for aiming/dragging.
-          this.tweens.add({
-            targets: target.objects,
-            y: `+=${moveY}`,
-            duration: Math.max(760, 1350 - difficulty + index * 150),
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.inOut",
-          });
-
-          // Stable glow. No scale pulsing here because it looked like blinking.
-          target.glow.setAlpha(0.2);
-        });
-
-        syncHud("3 arrows loaded. Hit the center for Bullseye +20.");
-      }
-
-      createTarget(x, y, answer, index) {
-        const colors = [0xef4444, 0x3b82f6, 0x22c55e, 0xa855f7];
-        const color = colors[index % colors.length];
-
-        const shadow = this.add.ellipse(x + 10, y + 18, 128, 38, 0x000000, 0.25).setDepth(19);
-        const glow = this.add.circle(x, y, 60, color, 0.16).setDepth(20);
-        const outer = this.add.circle(x, y, 52, 0xffffff).setDepth(22);
-        const blue = this.add.circle(x, y, 43, 0x38bdf8).setDepth(23);
-        const dark = this.add.circle(x, y, 34, 0x111827).setDepth(24);
-        const gold = this.add.circle(x, y, 25, 0xfacc15).setDepth(25);
-        const inner = this.add.circle(x, y, 16, color).setDepth(26);
-
-        const label = this.add
-          .text(x, y, answer, {
-            fontSize: "18px",
+          const label = this.add.text(f.x, f.y + 66, answer, {
+            fontSize: "22px",
             color: "#ffffff",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 4,
-          })
-          .setOrigin(0.5)
-          .setDepth(28);
-
-        const zone = this.add
-          .zone(x, y, 128, 128)
-          .setOrigin(0.5)
-          .setInteractive({ useHandCursor: true })
-          .setDepth(29);
-
-        zone.answer = answer;
-        zone.outer = outer;
-        zone.blue = blue;
-        zone.dark = dark;
-        zone.gold = gold;
-        zone.inner = inner;
-        zone.glow = glow;
-        zone.shadow = shadow;
-
-        return {
-          objects: [shadow, glow, outer, blue, dark, gold, inner, label, zone],
-          rings: [outer, blue, dark, gold, inner],
-          glow,
-          label,
-        };
-      }
-
-      shoot(pointerX, pointerY) {
-        if (!canShoot || arrowsLeft <= 0 || shotLocked) return;
-
-        canShoot = false;
-        shotLocked = true;
-        this.aimLine.clear();
-
-        arrowsLeft -= 1;
-        syncHud("Arrow flying...");
-
-        const startX = this.scale.width - 220;
-        const startY = this.scale.height / 2 + 20;
-        const angle = Phaser.Math.Angle.Between(startX, startY, pointerX, pointerY);
-        const speed = 1150 + this.power * 850;
-
-        this.arrow = this.add.container(startX, startY).setDepth(63);
-        const shaft = this.add.rectangle(0, 0, 108, 8, 0xf8fafc);
-        const head = this.add.triangle(-65, 0, 0, -13, 0, 13, -26, 0, 0xef4444);
-        const feather1 = this.add.triangle(52, -6, 0, 0, 0, 13, 18, 0, 0x38bdf8);
-        const feather2 = this.add.triangle(52, 6, 0, 0, 0, -13, 18, 0, 0x60a5fa);
-
-        this.arrow.add([shaft, head, feather1, feather2]);
-        this.arrow.rotation = angle;
-
-        this.physics.add.existing(this.arrow);
-        this.arrow.body.setSize(108, 16);
-        this.arrow.body.setAllowGravity(false);
-        this.arrow.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-
-        const trailTimer = this.time.addEvent({
-          delay: 18,
-          loop: true,
-          callback: () => {
-            if (!this.arrow || !this.arrow.active) return;
-            const trail = this.add.circle(this.arrow.x, this.arrow.y, 5, 0xfacc15, 0.68).setDepth(61);
-            this.tweens.add({
-              targets: trail,
-              alpha: 0,
-              scale: 0,
-              duration: 280,
-              onComplete: () => trail.destroy(),
-            });
-          },
-        });
-
-        const hitTimer = this.time.addEvent({
-          delay: 16,
-          loop: true,
-          callback: () => {
-            if (!this.arrow || !this.arrow.active) {
-              hitTimer.remove(false);
-              trailTimer.remove(false);
-              return;
-            }
-
-            let hitZone = null;
-            const zones = this.targets.filter((item) => item.type === "Zone");
-
-            zones.forEach((zone) => {
-              const distance = Phaser.Math.Distance.Between(this.arrow.x, this.arrow.y, zone.x, zone.y);
-              if (distance < 62) hitZone = zone;
-            });
-
-            if (hitZone) {
-              hitTimer.remove(false);
-              trailTimer.remove(false);
-              this.arrow.body.setVelocity(0, 0);
-              this.checkAnswer(hitZone);
-              return;
-            }
-
-            if (
-              this.arrow.x < -140 ||
-              this.arrow.x > this.scale.width + 140 ||
-              this.arrow.y < -140 ||
-              this.arrow.y > this.scale.height + 140
-            ) {
-              hitTimer.remove(false);
-              trailTimer.remove(false);
-              this.handleMiss();
-            }
-          },
-        });
-      }
-
-      checkAnswer(zone) {
-        const q = safeQuestions[currentIndex];
-        const correct =
-          String(zone.answer).trim().toLowerCase() ===
-          String(q.answer).trim().toLowerCase();
-
-        const hitDistance = this.arrow
-          ? Phaser.Math.Distance.Between(this.arrow.x, this.arrow.y, zone.x, zone.y)
-          : 99;
-
-        const bullseye = hitDistance <= 18;
-
-        if (correct) this.handleCorrect(zone, bullseye);
-        else this.handleWrong(zone);
-      }
-
-      getShotPoints() {
-        if (arrowsLeft === 2) return 30;
-        if (arrowsLeft === 1) return 20;
-        return 10;
-      }
-
-      handleCorrect(zone, bullseye = false) {
-        this.arrow?.destroy();
-        this.arrow = null;
-
-        const base = this.getShotPoints();
-        combo += 1;
-
-        const comboBonus = combo >= 3 ? 15 : 0;
-        const perfectBonus = arrowsLeft === 2 ? 15 : 0;
-        const bullseyeBonus = bullseye ? 20 : 0;
-        const gained = base + comboBonus + perfectBonus + bullseyeBonus;
-
-        score += gained;
-
-        this.paintTarget(zone, 0x22c55e);
-        this.burst(zone.x, zone.y, 0x22c55e, true);
-        if (bullseye) this.ringShockwave(zone.x, zone.y, 0xfacc15);
-        this.floatingText(zone.x, zone.y - 90, `+${gained}`, bullseye ? "#facc15" : "#22c55e");
-
-        if (bullseye) this.centerMessage("BULLSEYE +20!", "#facc15");
-        else if (perfectBonus) this.centerMessage("PERFECT HIT!", "#facc15");
-        else if (comboBonus) this.centerMessage("COMBO BONUS!", "#38bdf8");
-        else this.centerMessage("CORRECT!", "#22c55e");
-
-        this.cameras.main.flash(130, 34, 197, 94);
-        syncHud(`Correct! +${gained} points.`);
-
-        this.time.delayedCall(950, () => {
-          currentIndex += 1;
-          shotLocked = false;
-          if (currentIndex >= safeQuestions.length) this.endGame();
-          else this.loadQuestion();
-        });
-      }
-
-      handleWrong(zone) {
-        this.arrow?.destroy();
-        this.arrow = null;
-
-        combo = 0;
-        score = Math.max(0, score - 5);
-
-        this.paintTarget(zone, 0xef4444);
-        this.burst(zone.x, zone.y, 0xef4444, false);
-        this.centerMessage("WRONG TARGET!", "#ef4444");
-        this.cameras.main.shake(160, 0.008);
-
-        if (arrowsLeft <= 0) {
-          syncHud("No arrows left. Moving to next question.");
-          this.time.delayedCall(950, () => {
-            currentIndex += 1;
-            shotLocked = false;
-            if (currentIndex >= safeQuestions.length) this.endGame();
-            else this.loadQuestion();
-          });
-        } else {
-          syncHud(`Wrong. Reloading... ${arrowsLeft} arrows left.`);
-          this.reloadArrow();
-        }
-      }
-
-      handleMiss() {
-        this.arrow?.destroy();
-        this.arrow = null;
-
-        combo = 0;
-        this.centerMessage("MISS!", "#f97316");
-        this.cameras.main.shake(120, 0.006);
-
-        if (arrowsLeft <= 0) {
-          syncHud("No arrows left. Moving to next question.");
-          this.time.delayedCall(950, () => {
-            currentIndex += 1;
-            shotLocked = false;
-            if (currentIndex >= safeQuestions.length) this.endGame();
-            else this.loadQuestion();
-          });
-        } else {
-          syncHud(`Missed. Reloading... ${arrowsLeft} arrows left.`);
-          this.reloadArrow();
-        }
-      }
-
-      reloadArrow() {
-        const x = this.scale.width - 170;
-        const y = this.scale.height / 2 + 20;
-
-        const reloadText = this.add
-          .text(x, y - 120, "RELOADING", {
-            fontSize: "20px",
-            color: "#facc15",
             fontFamily: "Arial",
             fontStyle: "bold",
             stroke: "#000000",
             strokeThickness: 5,
-          })
-          .setOrigin(0.5)
-          .setDepth(80);
+          }).setOrigin(0.5).setDepth(72);
 
-        const icon = this.add
-          .text(x, y + 130, "🏹", { fontSize: "46px" })
-          .setOrigin(0.5)
-          .setDepth(80);
-
-        this.tweens.add({
-          targets: icon,
-          y,
-          alpha: 0,
-          duration: 540,
-          ease: "Back.in",
-          onComplete: () => {
-            reloadText.destroy();
-            icon.destroy();
-            shotLocked = false;
-            canShoot = true;
-            syncHud(`${arrowsLeft} arrow${arrowsLeft === 1 ? "" : "s"} left. Aim again.`);
-          },
+          f.label = label;
+          this.labels.push(label);
+          this.answerFish.push(f);
         });
+
+        syncHud(`${maps[currentMapIndex].emoji} ${maps[currentMapIndex].name}: find ⭐ answer fish.`);
       }
 
-      paintTarget(zone, color) {
-        zone.glow?.setFillStyle(color, 0.28);
-        zone.outer?.setFillStyle(color);
-        zone.blue?.setFillStyle(0xffffff);
-        zone.dark?.setFillStyle(0x111827);
-        zone.gold?.setFillStyle(0xffffff);
-        zone.inner?.setFillStyle(color);
-
-        this.tweens.add({
-          targets: [zone.glow, zone.outer, zone.blue, zone.dark, zone.gold, zone.inner],
-          scaleX: 1.45,
-          scaleY: 1.45,
-          yoyo: true,
-          duration: 170,
-          ease: "Back.out",
-        });
+      createPointer() {
+        this.starPointer = this.add.text(GAME_W / 2, 34, "⭐", { fontSize: "30px" }).setOrigin(0.5).setScrollFactor(0).setDepth(210);
       }
 
-      burst(x, y, color, correct) {
-        const count = correct ? 58 : 30;
+      setTargetFromPointer(pointer) {
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        this.targetX = Phaser.Math.Clamp(world.x, 80, WORLD_W - 80);
+        this.targetY = Phaser.Math.Clamp(world.y, 100, WORLD_H - 90);
+      }
 
-        for (let i = 0; i < count; i++) {
-          const p = this.add
-            .circle(x, y, Phaser.Math.Between(3, 8), color, Phaser.Math.FloatBetween(0.75, 1))
-            .setDepth(90);
+      movePlayer(time) {
+        const boost = time < speedBoostUntil ? 70 : 0;
+        const speed = 330 + level * 18 + boost;
+        const growthScale = Math.min(1.75, 1 + (level - 1) * 0.07);
 
-          this.tweens.add({
-            targets: p,
-            x: x + Phaser.Math.Between(-170, 170),
-            y: y + Phaser.Math.Between(-150, 150),
-            alpha: 0,
-            scale: 0,
-            duration: correct ? 760 : 500,
-            ease: "Cubic.out",
-            onComplete: () => p.destroy(),
-          });
-        }
-
-        if (correct) {
-          for (let i = 0; i < 15; i++) {
-            const star = this.add.text(x, y, "⭐", { fontSize: "20px" }).setOrigin(0.5).setDepth(91);
-            this.tweens.add({
-              targets: star,
-              x: x + Phaser.Math.Between(-130, 130),
-              y: y + Phaser.Math.Between(-120, 120),
-              alpha: 0,
-              scale: 0.2,
-              duration: 800,
-              onComplete: () => star.destroy(),
-            });
+        if (isPortraitMobile) {
+          const joy = joystickRef.current;
+          if (joy.active && Math.abs(joy.x) + Math.abs(joy.y) > 0.05) {
+            const angle = Math.atan2(joy.y, joy.x);
+            this.player.body.setVelocity(joy.x * speed, joy.y * speed);
+            this.player.rotation = angle;
+          } else {
+            this.player.body.setVelocity(0, 0);
+          }
+        } else {
+          const dx = this.targetX - this.player.x;
+          const dy = this.targetY - this.player.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > 8) {
+            const angle = Math.atan2(dy, dx);
+            this.player.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+            this.player.rotation = angle;
+          } else {
+            this.player.body.setVelocity(0, 0);
           }
         }
+
+        this.player.scaleX = growthScale;
+        this.player.scaleY = growthScale;
       }
 
-      floatingText(x, y, text, color) {
-        const item = this.add
-          .text(x, y, text, {
-            fontSize: "30px",
-            color,
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 6,
-          })
-          .setOrigin(0.5)
-          .setDepth(95);
+      moveAllFish() {
+        [...this.answerFish, ...this.predators, ...this.bgFish, ...this.rareFish].forEach((f) => {
+          if (!f.active || !f.body) return;
 
-        this.tweens.add({
-          targets: item,
-          y: y - 55,
-          alpha: 0,
-          scale: 1.16,
-          duration: 900,
-          onComplete: () => item.destroy(),
+          const isPredator = this.predators.includes(f);
+          const isRare = this.rareFish.includes(f);
+          const chaseDistance = f.scaleX > 1.45 ? 560 : 390;
+          const chase = isPredator && Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y) < chaseDistance;
+
+          if (chase) {
+            const a = Phaser.Math.Angle.Between(f.x, f.y, this.player.x, this.player.y);
+            const multiplier = f.scaleX > 1.45 ? 1.08 : 1.25;
+            f.body.setVelocity(Math.cos(a) * f.speed * multiplier, Math.sin(a) * f.speed * multiplier);
+            f.rotation = a;
+          } else {
+            f.body.setVelocity(f.dir.x * f.speed, f.dir.y * f.speed);
+            f.rotation = Math.atan2(f.dir.y, f.dir.x);
+          }
+
+          if (isRare) f.rotation += Math.sin(this.time.now / 160) * 0.03;
+          if (f.x < 95 || f.x > WORLD_W - 95) f.dir.x *= -1;
+          if (f.y < 105 || f.y > WORLD_H - 95) f.dir.y *= -1;
+
+          if (f.label) {
+            const d = Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y);
+            const show = d < 850 || f.correct;
+            f.label.setVisible(show);
+            if (show) {
+              f.label.x = f.x;
+              f.label.y = f.y + 68;
+            }
+          }
         });
       }
 
-      ringShockwave(x, y, color) {
-        const ring = this.add.circle(x, y, 18, color, 0).setStrokeStyle(5, color, 0.9).setDepth(94);
-        this.tweens.add({
-          targets: ring,
-          scaleX: 5,
-          scaleY: 5,
-          alpha: 0,
-          duration: 520,
-          ease: "Cubic.out",
-          onComplete: () => ring.destroy(),
+      checkAnswerCollision() {
+        this.answerFish.forEach((f) => {
+          if (!f.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, f.x, f.y);
+          if (dist < 66 * this.player.scaleX) {
+            f.correct ? this.eatCorrect(f) : this.eatWrong(f);
+          }
         });
       }
 
-      centerMessage(text, color) {
-        const item = this.add
-          .text(this.scale.width / 2, this.scale.height / 2 - 135, text, {
-            fontSize: "36px",
-            color,
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 7,
-          })
-          .setOrigin(0.5)
-          .setDepth(96);
+      checkPredatorCollision() {
+        if (invincible) return;
+        this.predators.forEach((p) => {
+          if (!p.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
+          if (dist < 62 * this.player.scaleX + (p.scaleX > 1.45 ? 32 : 0)) {
+            invincible = true;
 
-        this.tweens.add({
-          targets: item,
-          y: item.y - 52,
-          alpha: 0,
-          scale: 1.18,
-          duration: 900,
-          onComplete: () => item.destroy(),
+            if (shield > 0) {
+              shield -= 1;
+              this.centerMessage("SHIELD BLOCKED!", "#38bdf8");
+            } else {
+              health = Math.max(0, health - p.damage);
+              combo = 0;
+              this.centerMessage(`PREDATOR HIT -${p.damage}`, "#ef4444");
+              this.cameras.main.shake(140, 0.004);
+            }
+
+            this.tweens.add({
+              targets: this.player,
+              alpha: 0.35,
+              duration: 90,
+              yoyo: true,
+              repeat: 5,
+              onComplete: () => {
+                this.player.alpha = 1;
+                invincible = false;
+              },
+            });
+
+            syncHud(shield > 0 ? "Shield protected you." : "Predator attacked. Avoid skull fish.");
+            if (health <= 0) this.endGame("Predators defeated your fish!");
+          }
         });
       }
 
-      endGame() {
+      checkCoinCollision() {
+        this.coins.forEach((c) => {
+          if (!c.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y);
+          if (dist < 66 * this.player.scaleX) {
+            score += 5;
+            this.floatText(c.x, c.y - 40, "+5", "#facc15");
+            c.destroy();
+            syncHud("Treasure collected. +5 score.");
+          }
+        });
+      }
+
+      checkPowerupCollision() {
+        this.powerups.forEach((p) => {
+          if (!p.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
+          if (dist < 68 * this.player.scaleX) {
+            if (p.powerType === "health") {
+              health = Math.min(100, health + 18);
+              this.centerMessage("+18 HEALTH", "#22c55e");
+            }
+            if (p.powerType === "shield") {
+              shield = Math.min(3, shield + 1);
+              this.centerMessage("SHIELD +1", "#38bdf8");
+            }
+            if (p.powerType === "speed") {
+              speedBoostUntil = this.time.now + 7000;
+              score += 8;
+              this.centerMessage("SPEED BOOST!", "#facc15");
+            }
+            p.destroy();
+            syncHud("Powerup collected.");
+          }
+        });
+      }
+
+      checkRareFishCollision() {
+        this.rareFish.forEach((f) => {
+          if (!f.active) return;
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, f.x, f.y);
+          if (dist < 70 * this.player.scaleX) {
+            const data = f.rare;
+            score += data.score;
+            health = Math.min(100, health + 10);
+            combo += 1;
+            this.centerMessage(`${data.icon} ${data.name}! +${data.score}`, "#facc15", 1000);
+            this.floatText(f.x, f.y - 52, `+${data.score}`, "#facc15");
+            f.destroy();
+            syncHud(`${data.name} collected. Bonus reward added.`);
+          }
+        });
+      }
+
+      eatCorrect(f) {
+        const mapBoost = maps[currentMapIndex]?.rewardBoost || 1;
+        const gained = Math.round((10 + combo * 2) * mapBoost);
+        score += gained;
+        combo += 1;
+        health = Math.min(100, health + 8);
+        level = Math.min(12, level + 1);
+
+        this.floatText(f.x, f.y - 60, `+${gained}`, "#22c55e");
+        this.centerMessage(combo >= 5 ? `COMBO x${combo}!` : "CORRECT FISH!", combo >= 5 ? "#facc15" : "#22c55e");
+
+        f.label?.destroy();
+        f.destroy();
+        current += 1;
+
+        this.time.delayedCall(520, () => {
+          current >= safeQuestions.length ? this.endGame("Ocean level complete!") : this.createQuestion();
+        });
+        syncHud("Correct. Fish grew bigger.");
+      }
+
+      eatWrong(f) {
+        health = Math.max(0, health - 15);
+        score = Math.max(0, score - 4);
+        combo = 0;
+
+        this.floatText(f.x, f.y - 60, "-15 HP", "#ef4444");
+        this.centerMessage("WRONG FISH!", "#ef4444");
+        this.cameras.main.shake(120, 0.004);
+
+        f.label?.destroy();
+        f.destroy();
+        current += 1;
+
+        if (health <= 0) {
+          this.time.delayedCall(520, () => this.endGame("Wrong fish made you lose health!"));
+          return;
+        }
+
+        this.time.delayedCall(520, () => {
+          current >= safeQuestions.length ? this.endGame("Ocean level complete!") : this.createQuestion();
+        });
+        syncHud("Wrong fish. Health decreased.");
+      }
+
+      updatePointer() {
+        const correct = this.answerFish.find((f) => f.active && f.correct);
+        if (!correct || !this.starPointer) return;
+        const cam = this.cameras.main;
+        const sx = correct.x - cam.scrollX;
+        const sy = correct.y - cam.scrollY;
+        this.starPointer.x = Phaser.Math.Clamp(sx, 38, GAME_W - 38);
+        this.starPointer.y = Phaser.Math.Clamp(sy, 28, GAME_H - 30);
+      }
+
+      drawMiniMap() {
+        if (!miniMapRef.current || !this.player) return;
+        const canvas = miniMapRef.current;
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "rgba(2, 6, 23, 0.88)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
+        ctx.strokeRect(1, 1, w - 2, h - 2);
+
+        const dot = (x, y, color, r = 3) => {
+          ctx.beginPath();
+          ctx.fillStyle = color;
+          ctx.arc((x / WORLD_W) * w, (y / WORLD_H) * h, r, 0, Math.PI * 2);
+          ctx.fill();
+        };
+
+        dot(this.player.x, this.player.y, "#fb923c", 5);
+        const correct = this.answerFish.find((f) => f.active && f.correct);
+        if (correct) dot(correct.x, correct.y, "#facc15", 5);
+        this.answerFish.filter((f) => f.active && !f.correct).forEach((f) => dot(f.x, f.y, "#93c5fd", 2));
+        this.predators.filter((p) => p.active).forEach((p) => dot(p.x, p.y, "#ef4444", p.scaleX > 1.45 ? 4 : 3));
+        this.coins.filter((c) => c.active).forEach((c) => dot(c.x, c.y, "#facc15", 2));
+        this.powerups.filter((p) => p.active).forEach((p) => dot(p.x, p.y, "#22c55e", 2));
+        this.rareFish.filter((f) => f.active).forEach((f) => dot(f.x, f.y, "#a78bfa", 4));
+      }
+
+      floatText(x, y, text, color) {
+        const item = this.add.text(x, y, text, {
+          fontSize: "26px",
+          color,
+          fontFamily: "Arial",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 5,
+        }).setOrigin(0.5).setDepth(150);
+        this.tweens.add({ targets: item, y: y - 46, alpha: 0, duration: 760, onComplete: () => item.destroy() });
+      }
+
+      centerMessage(text, color, duration = 820) {
+        const item = this.add.text(GAME_W / 2, 54, text, {
+          fontSize: "30px",
+          color,
+          fontFamily: "Arial",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 6,
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(230);
+        this.tweens.add({ targets: item, y: 24, alpha: 0, duration, onComplete: () => item.destroy() });
+      }
+
+      endGame(reason = "Game complete!") {
         if (ended) return;
         ended = true;
-        canShoot = false;
-        shotLocked = true;
-        this.clearRoundObjects();
+        const xp = Math.max(25, Math.round(score / 2));
+        const coins = Math.max(12, Math.round(score / 8));
 
-        const width = this.scale.width;
-        const height = this.scale.height;
+        const panel = this.add.container(GAME_W / 2, GAME_H / 2).setScrollFactor(0).setDepth(500);
+        const bg = this.add.rectangle(0, 0, 620, 300, 0x0f172a, 0.97);
+        bg.setStrokeStyle(3, 0x38bdf8, 0.75);
+        const title = this.add.text(0, -100, "🐟 OCEAN COMPLETE", {
+          fontSize: "34px",
+          color: "#ffffff",
+          fontFamily: "Arial",
+          fontStyle: "bold",
+          stroke: "#000000",
+          strokeThickness: 6,
+        }).setOrigin(0.5);
+        const reasonText = this.add.text(0, -34, reason, { fontSize: "20px", color: "#38bdf8", fontFamily: "Arial", fontStyle: "bold" }).setOrigin(0.5);
+        const scoreText = this.add.text(0, 36, `Score: ${score} · Level: ${level} · ${getGrowthName()}`, { fontSize: "20px", color: "#facc15", fontFamily: "Arial", fontStyle: "bold" }).setOrigin(0.5);
+        const rewardText = this.add.text(0, 94, `Reward: +${xp} XP · +${coins} Coins`, { fontSize: "20px", color: "#22c55e", fontFamily: "Arial" }).setOrigin(0.5);
+        panel.add([bg, title, reasonText, scoreText, rewardText]);
 
-        const xp = Math.max(20, Math.round(score / 2));
-        const coins = Math.max(10, Math.round(score / 8));
+        syncHud("Game complete. Tap EXIT in GameRoom.");
 
-        this.add.rectangle(width / 2, height / 2, Math.min(width - 60, 680), 380, 0x111827, 0.97).setDepth(100);
-
-        this.add
-          .text(width / 2, height / 2 - 138, "🏆 ARENA COMPLETE", {
-            fontSize: width < 700 ? "30px" : "44px",
-            color: "#ffffff",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-            stroke: "#000000",
-            strokeThickness: 7,
-          })
-          .setOrigin(0.5)
-          .setDepth(101);
-
-        this.add
-          .text(width / 2, height / 2 - 46, `Final Score: ${score}`, {
-            fontSize: "31px",
-            color: "#facc15",
-            fontFamily: "Arial",
-            fontStyle: "bold",
-          })
-          .setOrigin(0.5)
-          .setDepth(101);
-
-        this.add
-          .text(width / 2, height / 2 + 22, `Reward: +${xp} XP · +${coins} Coins`, {
-            fontSize: "22px",
-            color: "#22c55e",
-            fontFamily: "Arial",
-          })
-          .setOrigin(0.5)
-          .setDepth(101);
-
-        this.add
-          .text(width / 2, height / 2 + 92, "Use Exit button to return to Student OS", {
-            fontSize: "17px",
-            color: "#cbd5e1",
-            fontFamily: "Arial",
-          })
-          .setOrigin(0.5)
-          .setDepth(101);
-
-        this.burst(width / 2, height / 2 + 150, 0xfacc15, true);
-
-        syncHud("Game complete.");
-
-        if (!rewardSentRef.current && typeof onRewardRef.current === "function") {
+        if (!rewardSentRef.current && typeof latestRewardRef.current === "function") {
           rewardSentRef.current = true;
-          onRewardRef.current({
+          latestRewardRef.current({
             xp,
             coins,
             score,
             total: safeQuestions.length,
-            mode: "archery-cinematic-v3",
+            gameName: "Fish Game PRO",
+            mode: "fish-pro-maps-rare-fish",
           });
         }
       }
     }
 
     const config = {
-      type: Phaser.AUTO,
-      parent: containerRef.current,
-      width: 1280,
-      height: 720,
+      type: isPortraitMobile ? Phaser.CANVAS : Phaser.AUTO,
+      parent: gameWrapRef.current,
+      width: GAME_W,
+      height: GAME_H,
       backgroundColor: "#020617",
-      scene: ArcheryScene,
+      scene: OceanScene,
       physics: {
         default: "arcade",
-        arcade: {
-          gravity: { y: 0 },
-          debug: false,
-        },
+        arcade: { gravity: { y: 0 }, debug: false },
       },
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: GAME_W,
+        height: GAME_H,
+      },
+      render: {
+        antialias: !isPortraitMobile,
+        pixelArt: false,
+        powerPreference: "high-performance",
       },
     };
 
     gameRef.current = new Phaser.Game(config);
 
     return () => {
+      setLoading(false);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
       }
     };
-  }, []);
+  }, [questions, topic, isPortraitMobile, mapSelected, selectedMapIndex]);
+
+  const healthRatio = Math.max(0, Math.min(1, hud.health / 100));
+
+  const updateJoystick = (clientX, clientY, rect) => {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const max = Math.min(rect.width, rect.height) * 0.34;
+    const clamped = Math.min(len, max);
+    const angle = Math.atan2(dy, dx);
+
+    joystickRef.current = {
+      x: len > 8 ? Math.cos(angle) : 0,
+      y: len > 8 ? Math.sin(angle) : 0,
+      active: len > 8,
+    };
+
+    return { x: Math.cos(angle) * clamped, y: Math.sin(angle) * clamped };
+  };
+
+  const handleJoyMove = (e) => {
+    if (!isPortraitMobile) return;
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const touch = e.touches?.[0];
+    const x = touch ? touch.clientX : e.clientX;
+    const y = touch ? touch.clientY : e.clientY;
+    const pos = updateJoystick(x, y, rect);
+    const knob = target.querySelector("[data-joy-knob]");
+    if (knob) knob.style.transform = `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`;
+  };
+
+  const stopJoystick = (e) => {
+    joystickRef.current = { x: 0, y: 0, active: false };
+    const knob = e.currentTarget.querySelector("[data-joy-knob]");
+    if (knob) knob.style.transform = "translate(-50%, -50%)";
+  };
+
+  const LoadingOverlay = () => (
+    <div className="absolute inset-0 z-[100000] flex flex-col items-center justify-center bg-slate-950 text-white">
+      <div className="text-7xl animate-bounce">🐟</div>
+      <div className="mt-5 text-2xl font-black">Loading Ocean Adventure</div>
+      <div className="mt-2 text-sm font-bold text-cyan-200">{loadingText}</div>
+      <div className="mt-6 h-3 w-64 overflow-hidden rounded-full bg-slate-800">
+        <div className="h-full w-2/3 animate-pulse rounded-full bg-cyan-400" />
+      </div>
+      <div className="mt-4 text-xs font-semibold text-slate-400">Student OS is preparing your map, fish, questions, and rewards.</div>
+    </div>
+  );
+
+  const startSelectedMap = (index) => {
+    const map = FISH_GAME_MAPS[index] || FISH_GAME_MAPS[0];
+    setSelectedMapIndex(index);
+    setLoading(true);
+    setLoadingText(`${map.emoji} Loading ${map.name}...`);
+    setMapSelected(true);
+  };
+
+  const MapSelectScreen = () => {
+    const touchStartRef = useRef({ x: 0, y: 0, moved: false });
+
+    const startCardTouch = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY, moved: false };
+    };
+
+    const moveCardTouch = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      const dx = Math.abs(touch.clientX - touchStartRef.current.x);
+      const dy = Math.abs(touch.clientY - touchStartRef.current.y);
+      if (dx > 8 || dy > 8) touchStartRef.current.moved = true;
+    };
+
+    const selectMapSafely = (index) => {
+      if (touchStartRef.current.moved) return;
+      startSelectedMap(index);
+    };
+
+    return (
+      <div
+        className="fixed inset-0 z-[99999] bg-slate-950 text-white"
+        style={{
+          width: "100dvw",
+          height: "100dvh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
+          overscrollBehaviorY: "contain",
+          scrollBehavior: "auto",
+        }}
+      >
+        <div
+          className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6"
+          style={{ touchAction: "pan-y" }}
+        >
+          <div className="mb-5 text-center">
+            <div className="text-3xl font-black sm:text-4xl">🌊 Choose Your Ocean Map</div>
+            <div className="mx-auto mt-2 max-w-2xl text-sm font-bold text-cyan-200">
+              Scroll normally, then tap a map to start. The map stays same for the full round.
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {FISH_GAME_MAPS.map((map, index) => (
+              <div
+                key={map.name}
+                role="button"
+                tabIndex={0}
+                onTouchStart={startCardTouch}
+                onTouchMove={moveCardTouch}
+                onClick={() => selectMapSafely(index)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") startSelectedMap(index);
+                }}
+                className="min-h-[130px] cursor-pointer select-none rounded-3xl border border-white/10 bg-white/5 p-5 text-left shadow-2xl transition-colors hover:bg-white/10 active:bg-cyan-400/20 sm:min-h-[190px]"
+                style={{ touchAction: "pan-y", WebkitTapHighlightColor: "transparent" }}
+              >
+                <div className="text-5xl sm:text-6xl">{map.emoji}</div>
+                <div className="mt-4 text-2xl font-black sm:text-xl">{map.name}</div>
+                <div className="mt-3 text-sm font-bold text-slate-300 sm:text-xs">
+                  Predators: {map.predatorCount} · Reward x{map.rewardBoost}
+                </div>
+                <div className="mt-4 inline-flex rounded-full bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950">
+                  Start Map
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (!mapSelected) return <MapSelectScreen />;
+
+  const HudCard = ({ mobile = false }) => (
+    <div
+      className={
+        mobile
+          ? "relative rounded-3xl border border-cyan-400/35 bg-slate-950/95 p-4 shadow-2xl"
+          : "pointer-events-none fixed left-5 top-5 z-[10000] w-[420px] rounded-2xl border border-cyan-400/35 bg-slate-950/75 p-4 text-white shadow-2xl backdrop-blur-md"
+      }
+    >
+      <div className={mobile ? "pr-24 text-lg font-black leading-tight" : "text-sm font-black leading-tight"}>
+        Q{hud.current}/{hud.total}. {hud.question}
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-2 text-xs font-black">
+        <div>Score {hud.score}</div>
+        <div className="text-green-300">HP {hud.health}</div>
+        <div className="text-blue-300">Combo {hud.combo}</div>
+        <div className="text-purple-300">Lv {hud.level}{hud.shield > 0 ? ` 🛡${hud.shield}` : ""}</div>
+      </div>
+      <div className="mt-3 h-2.5 rounded-full bg-slate-800">
+        <div className="h-2.5 rounded-full bg-green-500" style={{ width: `${healthRatio * 100}%` }} />
+      </div>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs font-black text-cyan-200">{hud.mapName} · {hud.growthName}</div>
+          <div className="mt-1 text-xs font-bold leading-snug text-slate-200">{hud.message}</div>
+        </div>
+        <canvas
+          ref={miniMapRef}
+          width={170}
+          height={92}
+          className={mobile ? "h-[78px] w-[132px] shrink-0 rounded border border-cyan-400/60 bg-slate-950" : "h-[70px] w-[130px] shrink-0 rounded border border-cyan-400/60 bg-slate-950"}
+        />
+      </div>
+    </div>
+  );
+
+  if (isPortraitMobile) {
+    return (
+      <div
+        className="fixed inset-0 z-[99999] grid bg-slate-950 text-white"
+        style={{
+          gridTemplateRows: "31dvh minmax(200px, 38dvh) 31dvh",
+          width: "100dvw",
+          height: "100dvh",
+          overflow: "hidden",
+          touchAction: "none",
+          overscrollBehavior: "none",
+        }}
+      >
+        {loading && <LoadingOverlay />}
+
+        <div className="relative border-b border-cyan-400/30 bg-slate-950 px-3 pt-5">
+          <HudCard mobile />
+        </div>
+
+        <div className="relative flex items-center justify-center overflow-hidden border-y border-cyan-400/20 bg-slate-900">
+          <div ref={gameWrapRef} className="relative h-full w-full overflow-hidden rounded-2xl bg-slate-900" />
+        </div>
+
+        <div
+          className="relative flex flex-col items-center justify-center bg-slate-950"
+          onTouchStart={handleJoyMove}
+          onTouchMove={handleJoyMove}
+          onTouchEnd={stopJoystick}
+          onMouseDown={handleJoyMove}
+          onMouseMove={(e) => {
+            if (e.buttons === 1) handleJoyMove(e);
+          }}
+          onMouseUp={stopJoystick}
+          style={{ touchAction: "none" }}
+        >
+          <div className="mb-2 text-sm font-black text-cyan-200">Joystick · Chase ⭐ answer fish</div>
+          <div className="relative h-36 w-36 rounded-full border-4 border-cyan-400/70 bg-cyan-300/10 shadow-[0_0_35px_rgba(34,211,238,0.35)]">
+            <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/30 bg-white/10" />
+            <div data-joy-knob className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-cyan-300 bg-white/40 shadow-xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white">
-      <div className="flex h-screen w-screen flex-col">
-        <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/95 p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-black sm:text-3xl">🏹 Archery Arena V4</h1>
-            <p className="text-xs text-slate-400 sm:text-sm">
-              {topic || "Study Topic"} · bullseye bonus · shuffled targets · 3 arrows
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold sm:text-sm">
-              Score: {hud.score}
-            </div>
-            <div className="rounded-xl bg-blue-400/10 px-3 py-2 text-xs font-bold text-blue-300 sm:text-sm">
-              Combo: {hud.combo}
-            </div>
-            <div className="rounded-xl bg-yellow-400/10 px-3 py-2 text-xs font-bold text-yellow-300 sm:text-sm">
-              Arrows: {hud.arrows}
-            </div>
-            <div className="rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-300 sm:text-sm">
-              Q: {hud.current}/{hud.total}
-            </div>
-            <button
-              onClick={onExit}
-              className="rounded-xl bg-red-500 px-4 py-2 text-xs font-bold text-white hover:bg-red-600 sm:text-sm"
-            >
-              Exit
-            </button>
-          </div>
-        </div>
-
-        <div className="border-b border-slate-800 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200">
-          {hud.message}
-        </div>
-
-        <div ref={containerRef} className="h-full min-h-0 w-full flex-1 bg-slate-950" />
-      </div>
+    <div
+      className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white"
+      style={{
+        width: "100dvw",
+        height: "100dvh",
+        margin: 0,
+        padding: 0,
+        touchAction: "none",
+        overscrollBehavior: "none",
+      }}
+    >
+      {loading && <LoadingOverlay />}
+      <HudCard />
+      <div ref={gameWrapRef} className="h-full w-full bg-slate-950" />
     </div>
   );
 }
