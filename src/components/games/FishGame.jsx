@@ -1035,76 +1035,43 @@ export default function FishGame({
   };
 
   const MapSelectScreen = () => {
-    const touchStartRef = useRef({ x: 0, y: 0, moved: false });
-
-    const startCardTouch = (event) => {
-      const touch = event.touches?.[0];
-      if (!touch) return;
-      touchStartRef.current = { x: touch.clientX, y: touch.clientY, moved: false };
-    };
-
-    const moveCardTouch = (event) => {
-      const touch = event.touches?.[0];
-      if (!touch) return;
-      const dx = Math.abs(touch.clientX - touchStartRef.current.x);
-      const dy = Math.abs(touch.clientY - touchStartRef.current.y);
-      if (dx > 8 || dy > 8) touchStartRef.current.moved = true;
-    };
-
-    const selectMapSafely = (index) => {
-      if (touchStartRef.current.moved) return;
-      startSelectedMap(index);
-    };
-
     return (
       <div
         className="fixed inset-0 z-[99999] bg-slate-950 text-white"
         style={{
           width: "100dvw",
           height: "100dvh",
-          overflowY: "auto",
-          overflowX: "hidden",
-          WebkitOverflowScrolling: "touch",
-          touchAction: "pan-y",
-          overscrollBehaviorY: "contain",
-          scrollBehavior: "auto",
+          overflow: "hidden",
+          touchAction: "manipulation",
+          overscrollBehavior: "none",
         }}
       >
-        <div
-          className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6"
-          style={{ touchAction: "pan-y" }}
-        >
-          <div className="mb-5 text-center">
-            <div className="text-3xl font-black sm:text-4xl">🌊 Choose Your Ocean Map</div>
-            <div className="mx-auto mt-2 max-w-2xl text-sm font-bold text-cyan-200">
-              Scroll normally, then tap a map to start. The map stays same for the full round.
+        <div className="flex h-full flex-col px-3 pb-3 pt-5 sm:px-6">
+          <div className="shrink-0 pr-24 text-center">
+            <div className="text-2xl font-black leading-tight sm:text-4xl">🌊 Choose Ocean Map</div>
+            <div className="mx-auto mt-1 max-w-2xl text-[11px] font-bold leading-snug text-cyan-200 sm:text-sm">
+              Tap a map to start. No scrolling needed on mobile.
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-3 grid flex-1 auto-rows-fr grid-cols-2 gap-2 overflow-hidden sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
             {FISH_GAME_MAPS.map((map, index) => (
-              <div
+              <button
                 key={map.name}
-                role="button"
-                tabIndex={0}
-                onTouchStart={startCardTouch}
-                onTouchMove={moveCardTouch}
-                onClick={() => selectMapSafely(index)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") startSelectedMap(index);
-                }}
-                className="min-h-[130px] cursor-pointer select-none rounded-3xl border border-white/10 bg-white/5 p-5 text-left shadow-2xl transition-colors hover:bg-white/10 active:bg-cyan-400/20 sm:min-h-[190px]"
-                style={{ touchAction: "pan-y", WebkitTapHighlightColor: "transparent" }}
+                type="button"
+                onClick={() => startSelectedMap(index)}
+                className="min-h-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-left shadow-xl transition active:scale-[0.98] active:border-cyan-300 active:bg-cyan-400/20 sm:rounded-3xl sm:p-5"
+                style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
               >
-                <div className="text-5xl sm:text-6xl">{map.emoji}</div>
-                <div className="mt-4 text-2xl font-black sm:text-xl">{map.name}</div>
-                <div className="mt-3 text-sm font-bold text-slate-300 sm:text-xs">
-                  Predators: {map.predatorCount} · Reward x{map.rewardBoost}
+                <div className="text-3xl leading-none sm:text-6xl">{map.emoji}</div>
+                <div className="mt-2 text-base font-black leading-tight sm:mt-4 sm:text-xl">{map.name}</div>
+                <div className="mt-1 text-[10px] font-bold leading-tight text-slate-300 sm:mt-3 sm:text-xs">
+                  Predators {map.predatorCount} · Reward x{map.rewardBoost}
                 </div>
-                <div className="mt-4 inline-flex rounded-full bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950">
-                  Start Map
+                <div className="mt-2 inline-flex rounded-full bg-cyan-400 px-3 py-1.5 text-[10px] font-black text-slate-950 sm:mt-4 sm:px-4 sm:py-2 sm:text-sm">
+                  Start
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
