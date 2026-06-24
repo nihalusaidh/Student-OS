@@ -102,7 +102,7 @@ export default function ArcheryGame({
     const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
     const touchPoints = navigator.maxTouchPoints > 0;
     const phoneUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-    const smallLandscape = window.innerWidth > window.innerHeight && window.innerHeight <= 620;
+    const smallLandscape = window.innerWidth > window.innerHeight;
     return Boolean(coarse || touchPoints || phoneUA || smallLandscape);
   });
 
@@ -110,6 +110,16 @@ export default function ArcheryGame({
     if (typeof window === "undefined") return false;
     const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
     return Boolean(coarse && window.innerHeight > window.innerWidth);
+  });
+
+  const [isCompactLandscape, setIsCompactLandscape] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const landscape = window.innerWidth > window.innerHeight;
+    const shortScreen = window.innerHeight <= 650;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const touchPoints = navigator.maxTouchPoints > 0;
+    const phoneUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    return Boolean(landscape && shortScreen && (coarse || touchPoints || phoneUA || window.innerWidth <= 1000));
   });
 
   useEffect(() => {
@@ -121,10 +131,14 @@ export default function ArcheryGame({
       const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
       const touchPoints = navigator.maxTouchPoints > 0;
       const phoneUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-      const smallLandscape = window.innerWidth > window.innerHeight && window.innerHeight <= 620;
+      const smallLandscape = window.innerWidth > window.innerHeight;
       const mobileLike = Boolean(coarse || touchPoints || phoneUA || smallLandscape);
+      const landscape = window.innerWidth > window.innerHeight;
+      const shortScreen = window.innerHeight <= 650;
+      const compactLandscape = Boolean(landscape && shortScreen && (mobileLike || window.innerWidth <= 1000));
       setIsTouchDevice(mobileLike);
       setIsPortraitMobile(Boolean(mobileLike && window.innerHeight > window.innerWidth));
+      setIsCompactLandscape(compactLandscape);
     };
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
@@ -154,6 +168,18 @@ export default function ArcheryGame({
     const GAME_H = 720;
     const map = ARCHERY_MAPS[selectedMapIndex] || ARCHERY_MAPS[0];
 
+    const getRoundDifficulty = () => {
+      // Balanced progression:
+      // Q1 = clean warmup. After every correct answer, one more obstacle appears.
+      // This keeps the first shot readable but makes the game more engaging step-by-step.
+      if (current <= 0) return { label: "Warmup", obstacles: 0, windMax: 0, targetSpeed: 0.65 };
+      if (current === 1) return { label: "Obstacle 1", obstacles: 1, windMax: 0, targetSpeed: 0.76 };
+      if (current === 2) return { label: "Obstacle 2", obstacles: 2, windMax: Math.min(30, map.windMax || 0), targetSpeed: 0.86 };
+      if (current === 3) return { label: "Medium", obstacles: 3, windMax: Math.min(55, map.windMax || 0), targetSpeed: 0.96 };
+      if (current <= 5) return { label: "Hard", obstacles: 4, windMax: Math.min(85, map.windMax || 0), targetSpeed: 1.05 };
+      return { label: "Boss", obstacles: 5, windMax: Math.min(105, map.windMax || 0), targetSpeed: 1.12 };
+    };
+
     let score = 0;
     let combo = 0;
     let arrows = 0;
@@ -174,7 +200,7 @@ export default function ArcheryGame({
         arrows,
         current: Math.min(current + 1, safeQuestions.length),
         total: safeQuestions.length,
-        mapName: map.name,
+        mapName: `${map.name} · ${getRoundDifficulty().label}`,
         message,
         bossHp,
         wind: Math.round(this?.wind || windChangeTimer || 0),
@@ -364,10 +390,11 @@ export default function ArcheryGame({
         if (finalRound) bossHp = 2;
         else bossHp = 0;
 
-        const ySlots = [150, 255, 365, 475];
+        const ySlots = [145, 275, 405, 535];
+        const xSlots = [GAME_W - 230, GAME_W - 365, GAME_W - 250, GAME_W - 420];
         options.forEach((answer, index) => {
           const correct = String(answer).trim().toLowerCase() === String(q.answer).trim().toLowerCase();
-          const x = Phaser.Math.Between(GAME_W - 390, GAME_W - 165);
+          const x = xSlots[index] || Phaser.Math.Between(GAME_W - 430, GAME_W - 180);
           const y = ySlots[index] || Phaser.Math.Between(130, GAME_H - 170);
           const target = this.createTarget(x, y, correct, finalRound && correct);
           target.answer = answer;
@@ -375,7 +402,7 @@ export default function ArcheryGame({
           target.isBoss = finalRound && correct;
           target.baseY = y;
           target.movePhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
-          target.moveSpeed = Phaser.Math.FloatBetween(0.8, 1.45) * map.speed;
+          target.moveSpeed = Phaser.Math.FloatBetween(0.55, 0.95) * getRoundDifficulty().targetSpeed;
           target.setDepth(correct ? 55 : 45);
 
           const label = this.add.text(x, y + (target.isBoss ? 78 : 58), answer, {
@@ -495,7 +522,7 @@ export default function ArcheryGame({
 
       createWindTimer() {
         const updateWind = () => {
-          const max = map.windMax || 0;
+          const max = getRoundDifficulty().windMax || 0;
           this.wind = max ? Phaser.Math.Between(-max, max) : 0;
           windChangeTimer = this.wind;
           syncHud(this.wind === 0 ? "No wind. Aim normally." : `Wind changed: ${this.wind > 0 ? "→" : "←"} ${Math.abs(Math.round(this.wind))}`);
@@ -512,36 +539,52 @@ export default function ArcheryGame({
       createObstacles() {
         this.obstacles.forEach((item) => item.destroy());
         this.obstacles = [];
-        // Obstacles become harder after every correct answer.
-        // On mobile landscape they are placed in the visible middle lane,
-        // away from the bow and away from answer targets.
-        const baseCount = selectedMapIndex === 0 ? 1 : selectedMapIndex + 1;
-        const count = Math.min(8, baseCount + current);
+        // Obstacles increase only after correct answers.
+        // Q1-Q2 = 0 obstacles for every map, so the first stage is not impossible.
+        const count = getRoundDifficulty().obstacles;
+        if (count <= 0) return;
+
+        // Mobile landscape fix:
+        // Put obstacles inside the visible middle lane, away from the HUD, bow, and answer targets.
+        // They are intentionally large/high-contrast so the user can clearly see them on phone screens.
+        const obstacleLane = [
+          { x: 430, y: 260 },
+          { x: 555, y: 360 },
+          { x: 675, y: 240 },
+          { x: 800, y: 380 },
+          { x: 920, y: 285 },
+        ];
+
         for (let i = 0; i < count; i++) {
-          const x = Phaser.Math.Between(430, GAME_W - 520);
-          const y = Phaser.Math.Between(150, GAME_H - 190);
+          const slot = obstacleLane[i % obstacleLane.length];
+          const x = slot.x + Phaser.Math.Between(-28, 28);
+          const y = slot.y + Phaser.Math.Between(-24, 24);
           let obstacle;
           const type = map.obstacle || "log";
           if (type === "bird") {
-            obstacle = this.add.container(x, y).setDepth(82);
-            obstacle.add(this.add.text(0, 0, "🦅", { fontSize: "46px" }).setOrigin(0.5));
+            obstacle = this.add.container(x, y).setDepth(120);
+            obstacle.add(this.add.circle(0, 0, 36, 0xffedd5, 0.22));
+            obstacle.add(this.add.text(0, 0, "🦅", { fontSize: "58px" }).setOrigin(0.5));
+            obstacle.add(this.add.text(0, -48, "BLOCK", { fontSize: "14px", color: "#ffffff", fontFamily: "Arial", fontStyle: "bold", stroke: "#000000", strokeThickness: 4 }).setOrigin(0.5));
             obstacle.kind = "bird";
             obstacle.speedX = Phaser.Math.Between(65, 115) * (i % 2 ? -1 : 1);
           } else if (type === "pillar") {
-            obstacle = this.add.container(x, y).setDepth(82);
-            obstacle.add(this.add.rectangle(0, 0, 34, Phaser.Math.Between(120, 210), 0x78716c, 0.95));
-            obstacle.add(this.add.rectangle(0, 0, 46, 22, 0xa8a29e, 0.95));
+            obstacle = this.add.container(x, y).setDepth(120);
+            obstacle.add(this.add.rectangle(0, 0, 42, Phaser.Math.Between(150, 220), 0x78716c, 0.98));
+            obstacle.add(this.add.rectangle(0, 0, 62, 26, 0xa8a29e, 0.98));
+            obstacle.add(this.add.text(0, -92, "🪨", { fontSize: "30px" }).setOrigin(0.5));
             obstacle.kind = "pillar";
             obstacle.speedX = 0;
           } else if (type === "fire") {
-            obstacle = this.add.container(x, y).setDepth(82);
-            obstacle.add(this.add.circle(0, 0, 30, 0xef4444, 0.25));
-            obstacle.add(this.add.text(0, 0, "🔥", { fontSize: "48px" }).setOrigin(0.5));
+            obstacle = this.add.container(x, y).setDepth(120);
+            obstacle.add(this.add.circle(0, 0, 42, 0xef4444, 0.35));
+            obstacle.add(this.add.text(0, 0, "🔥", { fontSize: "62px" }).setOrigin(0.5));
+            obstacle.add(this.add.text(0, -54, "BLOCK", { fontSize: "14px", color: "#ffffff", fontFamily: "Arial", fontStyle: "bold", stroke: "#000000", strokeThickness: 4 }).setOrigin(0.5));
             obstacle.kind = "fire";
             obstacle.speedX = Phaser.Math.Between(35, 85) * (i % 2 ? -1 : 1);
           } else {
-            obstacle = this.add.container(x, y).setDepth(82);
-            obstacle.add(this.add.rectangle(0, 0, 40, 150, 0x78350f, 1));
+            obstacle = this.add.container(x, y).setDepth(120);
+            obstacle.add(this.add.rectangle(0, 0, 50, 170, 0x78350f, 1));
             obstacle.add(this.add.rectangle(0, -82, 58, 20, 0xfacc15, 1));
             obstacle.add(this.add.rectangle(0, 82, 58, 20, 0xfacc15, 1));
             obstacle.add(this.add.text(0, 0, "🪵", { fontSize: "44px" }).setOrigin(0.5));
@@ -552,7 +595,7 @@ export default function ArcheryGame({
           obstacle.baseY = y;
           obstacle.phase = Phaser.Math.FloatBetween(0, Math.PI * 2);
           this.physics.add.existing(obstacle);
-          obstacle.body.setSize(type === "pillar" ? 48 : 60, type === "pillar" ? 180 : 70);
+          obstacle.body.setSize(type === "pillar" ? 70 : 82, type === "pillar" ? 210 : 92);
           obstacle.body.setAllowGravity(false);
           obstacle.body.setImmovable(true);
           this.obstacles.push(obstacle);
@@ -570,7 +613,7 @@ export default function ArcheryGame({
           } else {
             o.x += o.speedX / 60;
             o.y = o.baseY + Math.sin(time / 450 + o.phase) * 36;
-            if (o.x < 330 || o.x > GAME_W - 250) o.speedX *= -1;
+            if (o.x < 380 || o.x > 980) o.speedX *= -1;
           }
         });
       }
@@ -753,9 +796,9 @@ export default function ArcheryGame({
       moveTargets(time) {
         this.targets.forEach((target) => {
           if (!target.active) return;
-          const amp = target.isBoss ? 76 : 46;
-          target.y = target.baseY + Math.sin(time / 720 * target.moveSpeed + target.movePhase) * amp;
-          target.x += Math.sin(time / 900 + target.movePhase) * 0.35 * map.speed;
+          const amp = current <= 1 ? 18 : target.isBoss ? 68 : 34;
+          target.y = target.baseY + Math.sin(time / 820 * target.moveSpeed + target.movePhase) * amp;
+          if (current >= 2) target.x += Math.sin(time / 1100 + target.movePhase) * 0.18 * getRoundDifficulty().targetSpeed;
           if (target.label) {
             target.label.x = target.x;
             target.label.y = target.y + (target.isBoss ? 78 : 58);
@@ -1012,10 +1055,10 @@ export default function ArcheryGame({
       className={
         mobile
           ? "rounded-3xl border border-yellow-400/40 bg-slate-950/95 p-4 shadow-2xl"
-          : "pointer-events-none fixed left-5 top-5 z-[10000] w-[440px] rounded-2xl border border-yellow-400/40 bg-slate-950/75 p-4 text-white shadow-2xl backdrop-blur-md"
+          : "pointer-events-none fixed left-4 top-4 z-[10000] w-[360px] rounded-xl border border-yellow-400/30 bg-slate-950/55 p-3 text-white shadow-xl backdrop-blur-sm"
       }
     >
-      <div className={mobile ? "text-base font-black leading-tight" : "text-sm font-black leading-tight"}>
+      <div className={mobile ? "text-base font-black leading-tight" : "text-xs font-black leading-tight"}>
         Q{hud.current}/{hud.total}. {hud.question}
       </div>
       <div className="mt-3 grid grid-cols-4 gap-2 text-xs font-black">
@@ -1032,18 +1075,21 @@ export default function ArcheryGame({
 
   const MobileLandscapeHud = () => (
     <>
-      {/* Mobile landscape: text only, no card/background, so it will not cover the game. */}
-      <div className="pointer-events-none fixed left-2 top-1 z-[10000] max-w-[58vw] text-white">
-        <div className="truncate text-[11px] font-black leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
-          Q{hud.current}/{hud.total}. {hud.question}
+      {/* Mobile landscape: text only. No card, no panel, no background blocking the game. */}
+      <div
+        className="pointer-events-none fixed left-2 right-24 top-1 z-[10000] text-white"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="flex items-center gap-2 text-[9px] font-black leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+          <span className="max-w-[44vw] truncate">Q{hud.current}/{hud.total}. {hud.question}</span>
+          <span className="text-yellow-200">S {hud.score}</span>
+          <span className="text-cyan-200">🌬 {hud.wind > 0 ? "→" : hud.wind < 0 ? "←" : "0"} {Math.abs(hud.wind)}</span>
+          <span className="text-orange-200">Obs {hud.obstacles}</span>
+          <span className="text-red-200">Boss {hud.bossHp}</span>
         </div>
       </div>
-
-      <div className="pointer-events-none fixed bottom-1 left-2 z-[10000] flex max-w-[70vw] gap-2 text-[10px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
-        <span>Score {hud.score}</span>
-        <span className="text-yellow-200">Combo {hud.combo}</span>
-        <span className="text-cyan-200">🌬 {hud.wind > 0 ? "→" : hud.wind < 0 ? "←" : "0"} {Math.abs(hud.wind)}</span>
-        <span className="text-orange-200">Obs {hud.obstacles}</span>
+      <div className="pointer-events-none fixed bottom-1 left-2 z-[10000] text-[9px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+        {hud.mapName} · {hud.message}
       </div>
     </>
   );
@@ -1058,16 +1104,13 @@ export default function ArcheryGame({
     </div>
   );
 
-  const forceMobileLandscapeHud =
-    typeof window !== "undefined" &&
-    window.innerWidth > window.innerHeight &&
-    window.innerHeight <= 620;
+  const forceMobileLandscapeHud = isCompactLandscape;
 
   if (!mapSelected) return <MapSelectScreen />;
 
   if (isPortraitMobile) return <RotateLandscapeScreen />;
 
-  if (isTouchDevice || forceMobileLandscapeHud) {
+  if (isCompactLandscape || isTouchDevice || forceMobileLandscapeHud) {
     return (
       <div
         className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white"
