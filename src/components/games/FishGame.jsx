@@ -19,11 +19,11 @@ import Phaser from "phaser";
  */
 
 const FISH_GAME_MAPS = [
-  { name: "Coral Reef", emoji: "🪸", top: 0x0891b2, mid: 0x0e7490, bottom: 0x164e63, sand: 0xc08457, decor: ["🪸", "🐚", "🌿", "🪨"], predatorCount: 5, rewardBoost: 1 },
-  { name: "Deep Ocean", emoji: "🌌", top: 0x0f172a, mid: 0x164e63, bottom: 0x020617, sand: 0x334155, decor: ["🪼", "🫧", "🪨", "🐚"], predatorCount: 7, rewardBoost: 1.15 },
-  { name: "Shipwreck Bay", emoji: "⚓", top: 0x0369a1, mid: 0x0f766e, bottom: 0x1e293b, sand: 0xa16207, decor: ["⚓", "🪙", "🪸", "🐚"], predatorCount: 7, rewardBoost: 1.25 },
-  { name: "Ice Ocean", emoji: "❄️", top: 0x7dd3fc, mid: 0x0284c7, bottom: 0x0f172a, sand: 0xe0f2fe, decor: ["❄️", "🧊", "🫧", "🐚"], predatorCount: 8, rewardBoost: 1.35 },
-  { name: "Volcano Sea", emoji: "🌋", top: 0x7f1d1d, mid: 0x0f172a, bottom: 0x020617, sand: 0x451a03, decor: ["🌋", "🔥", "🪨", "🫧"], predatorCount: 9, rewardBoost: 1.5 },
+  { name: "Coral Reef", emoji: "🪸", top: 0x0891b2, mid: 0x0e7490, bottom: 0x164e63, sand: 0xc08457, decor: ["🪸", "🐚", "🌿", "🪨"], predatorCount: 3, rewardBoost: 1, difficulty: "Easy" },
+  { name: "Deep Ocean", emoji: "🌌", top: 0x0f172a, mid: 0x164e63, bottom: 0x020617, sand: 0x334155, decor: ["🪼", "🫧", "🪨", "🐚"], predatorCount: 4, rewardBoost: 1.15, difficulty: "Medium" },
+  { name: "Shipwreck Bay", emoji: "⚓", top: 0x0369a1, mid: 0x0f766e, bottom: 0x1e293b, sand: 0xa16207, decor: ["⚓", "🪙", "🪸", "🐚"], predatorCount: 5, rewardBoost: 1.25, difficulty: "Treasure" },
+  { name: "Ice Ocean", emoji: "❄️", top: 0x7dd3fc, mid: 0x0284c7, bottom: 0x0f172a, sand: 0xe0f2fe, decor: ["❄️", "🧊", "🫧", "🐚"], predatorCount: 5, rewardBoost: 1.35, difficulty: "Hard" },
+  { name: "Volcano Sea", emoji: "🌋", top: 0x7f1d1d, mid: 0x0f172a, bottom: 0x020617, sand: 0x451a03, decor: ["🌋", "🔥", "🪨", "🫧"], predatorCount: 6, rewardBoost: 1.5, difficulty: "Extreme" },
 ];
 
 export default function FishGame({
@@ -102,8 +102,8 @@ export default function FishGame({
 
     const GAME_W = isPortraitMobile ? 960 : 1280;
     const GAME_H = isPortraitMobile ? 540 : 720;
-    const WORLD_W = isPortraitMobile ? 2400 : 3400;
-    const WORLD_H = isPortraitMobile ? 1350 : 1900;
+    const WORLD_W = isPortraitMobile ? 3400 : 4600;
+    const WORLD_H = isPortraitMobile ? 1900 : 2500;
 
     const maps = FISH_GAME_MAPS;
 
@@ -122,6 +122,7 @@ export default function FishGame({
     let speedBoostUntil = 0;
     let currentMapIndex = selectedMapIndex;
     let rareSpawnCount = 0;
+    let safeUntil = 0;
 
     const getGrowthName = () => {
       if (level >= 11) return "Ocean Legend";
@@ -200,8 +201,10 @@ export default function FishGame({
 
         this.time.delayedCall(isPortraitMobile ? 450 : 700, () => {
           ready = true;
+          safeUntil = this.time.now + 8500;
           setLoading(false);
-          syncHud(isPortraitMobile ? "Joystick ready. Chase ⭐ answer fish." : "Move with mouse or touch. Chase ⭐ answer fish.");
+          this.centerMessage("READ TIME: predators paused", "#38bdf8", 1700);
+          syncHud(isPortraitMobile ? "Read the question first. Predators are paused for 8 seconds." : "Read the question first. Predators are paused for 8 seconds.");
         });
 
         this.time.addEvent({
@@ -209,7 +212,7 @@ export default function FishGame({
           loop: true,
           callback: () => {
             if (!ready || ended) return;
-            health = Math.max(0, health - 0.22);
+            health = Math.max(0, health - 0.08);
             if (health <= 0) return this.endGame("Your fish ran out of health!");
             syncHud("Find ⭐ answer fish. Avoid ☠ predators. Rare fish give bonus rewards.");
           },
@@ -222,7 +225,7 @@ export default function FishGame({
         this.movePlayer(time);
         this.moveAllFish();
         this.checkAnswerCollision();
-        this.checkPredatorCollision();
+        if (time >= safeUntil) this.checkPredatorCollision();
         this.checkCoinCollision();
         this.checkPowerupCollision();
         this.checkRareFishCollision();
@@ -427,7 +430,7 @@ export default function FishGame({
 
       createPredators() {
         const map = maps[currentMapIndex] || maps[0];
-        for (let i = 0; i < Math.max(3, map.predatorCount - (isPortraitMobile ? 2 : 0)); i++) {
+        for (let i = 0; i < Math.max(2, map.predatorCount - (isPortraitMobile ? 1 : 0)); i++) {
           const p = this.makeRealFish(
             Phaser.Math.Between(560, WORLD_W - 150),
             Phaser.Math.Between(160, WORLD_H - 190),
@@ -440,8 +443,8 @@ export default function FishGame({
               size: Phaser.Math.FloatBetween(1.0, 1.35),
             }
           );
-          p.damage = Phaser.Math.Between(7, 14) + currentMapIndex;
-          p.speed = Phaser.Math.Between(78, 122) + currentMapIndex * 4;
+          p.damage = Phaser.Math.Between(4, 8) + Math.floor(currentMapIndex / 2);
+          p.speed = Phaser.Math.Between(48, 82) + currentMapIndex * 3;
           p.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize();
           this.physics.add.existing(p);
           p.body.setCircle(48);
@@ -458,8 +461,8 @@ export default function FishGame({
           emoji: "🦈",
           size: 1.55,
         });
-        bossShark.damage = 18 + currentMapIndex * 2;
-        bossShark.speed = 76 + currentMapIndex * 4;
+        bossShark.damage = 10 + currentMapIndex;
+        bossShark.speed = 48 + currentMapIndex * 4;
         bossShark.dir = new Phaser.Math.Vector2(-1, 0.35).normalize();
         this.physics.add.existing(bossShark);
         bossShark.body.setCircle(60);
@@ -564,8 +567,8 @@ export default function FishGame({
         const options = this.shuffleOptions([...new Set([...(q.options || []), q.answer])]).slice(0, 4);
         const answerColor = correctColors[current % correctColors.length];
 
-        const baseX = Phaser.Math.Between(880, WORLD_W - 760);
-        const baseY = Phaser.Math.Between(250, WORLD_H - 580);
+        const baseX = Phaser.Math.Between(1150, WORLD_W - 1000);
+        const baseY = Phaser.Math.Between(330, WORLD_H - 760);
         const spots = [
           [baseX, baseY],
           [baseX + 460, baseY + 150],
@@ -590,7 +593,7 @@ export default function FishGame({
 
           f.answer = answer;
           f.correct = correct;
-          f.speed = Phaser.Math.Between(86, 142) + currentMapIndex * 4;
+          f.speed = Phaser.Math.Between(62, 112) + currentMapIndex * 3;
           f.dir = new Phaser.Math.Vector2(Phaser.Math.FloatBetween(-1, 1), Phaser.Math.FloatBetween(-1, 1)).normalize();
           this.physics.add.existing(f);
           f.body.setCircle(43);
@@ -630,7 +633,7 @@ export default function FishGame({
 
       movePlayer(time) {
         const boost = time < speedBoostUntil ? 70 : 0;
-        const speed = 330 + level * 18 + boost;
+        const speed = 360 + level * 18 + boost;
         const growthScale = Math.min(1.75, 1 + (level - 1) * 0.07);
 
         if (isPortraitMobile) {
@@ -666,7 +669,8 @@ export default function FishGame({
           const isPredator = this.predators.includes(f);
           const isRare = this.rareFish.includes(f);
           const chaseDistance = f.scaleX > 1.45 ? 560 : 390;
-          const chase = isPredator && Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y) < chaseDistance;
+          const predatorPaused = this.time.now < safeUntil;
+          const chase = isPredator && !predatorPaused && Phaser.Math.Distance.Between(f.x, f.y, this.player.x, this.player.y) < chaseDistance;
 
           if (chase) {
             const a = Phaser.Math.Angle.Between(f.x, f.y, this.player.x, this.player.y);
@@ -674,7 +678,8 @@ export default function FishGame({
             f.body.setVelocity(Math.cos(a) * f.speed * multiplier, Math.sin(a) * f.speed * multiplier);
             f.rotation = a;
           } else {
-            f.body.setVelocity(f.dir.x * f.speed, f.dir.y * f.speed);
+            const roamSpeed = isPredator && predatorPaused ? f.speed * 0.35 : f.speed;
+            f.body.setVelocity(f.dir.x * roamSpeed, f.dir.y * roamSpeed);
             f.rotation = Math.atan2(f.dir.y, f.dir.x);
           }
 
@@ -808,6 +813,7 @@ export default function FishGame({
         f.label?.destroy();
         f.destroy();
         current += 1;
+        safeUntil = this.time.now + 4500;
 
         this.time.delayedCall(520, () => {
           current >= safeQuestions.length ? this.endGame("Ocean level complete!") : this.createQuestion();
@@ -827,6 +833,7 @@ export default function FishGame({
         f.label?.destroy();
         f.destroy();
         current += 1;
+        safeUntil = this.time.now + 4500;
 
         if (health <= 0) {
           this.time.delayedCall(520, () => this.endGame("Wrong fish made you lose health!"));
@@ -1050,7 +1057,7 @@ export default function FishGame({
           <div className="shrink-0 pr-24 text-center">
             <div className="text-2xl font-black leading-tight sm:text-4xl">🌊 Choose Ocean Map</div>
             <div className="mx-auto mt-1 max-w-2xl text-[11px] font-bold leading-snug text-cyan-200 sm:text-sm">
-              Tap a map to start. No scrolling needed on mobile.
+              Tap a map to start. Bigger ocean + read-time protection added.
             </div>
           </div>
 
@@ -1066,7 +1073,7 @@ export default function FishGame({
                 <div className="text-3xl leading-none sm:text-6xl">{map.emoji}</div>
                 <div className="mt-2 text-base font-black leading-tight sm:mt-4 sm:text-xl">{map.name}</div>
                 <div className="mt-1 text-[10px] font-bold leading-tight text-slate-300 sm:mt-3 sm:text-xs">
-                  Predators {map.predatorCount} · Reward x{map.rewardBoost}
+                  {map.difficulty} · Predators {map.predatorCount} · Reward x{map.rewardBoost}
                 </div>
                 <div className="mt-2 inline-flex rounded-full bg-cyan-400 px-3 py-1.5 text-[10px] font-black text-slate-950 sm:mt-4 sm:px-4 sm:py-2 sm:text-sm">
                   Start
