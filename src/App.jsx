@@ -2720,50 +2720,48 @@ ${smartHealth < 60 ? "You need a light but consistent recovery plan." : "You are
       setNoteUploading(false);
     }
   };
-
+  if (studyGameStarted) {
     return (
       <GameRoom
-        mode="archery"
+        mode={studyGameMode}
         questions={studyGameQuestions}
-        topic={studyGa
-  if (studyGameStarted) {
-  return (
-    <GameRoom
-      mode={studyGameMode}
-      questions={studyGameQuestions}
-      topic={studyGameTopic}
-      onExit={() => {
-        setStudyGameStarted(false);
-        setStudyGameFeedback("");
-      }}
-      onReward={({
-        xp: rewardXp = 0,
-        coins = 0,
-        score = 0,
-        total = studyGameQuestions.length,
-        gameName = studyGameMode,
-      }) => {
-        setStudyGameScore(score);
-        addXp(rewardXp);
-        setStudyCoins((prev) => prev + coins);
+        topic={studyGameTopic}
+        onExit={() => {
+          setStudyGameStarted(false);
+          setStudyGameFeedback("");
+          setStudyGameCurrent(0);
+          setStudyGameScore(0);
+        }}
+        onReward={({
+          xp: rewardXp = 0,
+          coins = 0,
+          score = 0,
+          total = studyGameQuestions.length,
+          gameName = studyGameMode,
+        }) => {
+          setStudyGameStarted(false);
+          setStudyGameFeedback("");
+          setStudyGameScore(score);
+          addXp(rewardXp);
+          setStudyCoins((prev) => prev + coins);
 
-        unlockAchievement(
-          "study-games-first",
-          "Study Gamer",
-          "🎮",
-          `You completed ${gameName} and earned +${rewardXp} XP.`,
-          "toast"
-        );
+          unlockAchievement(
+            "study-games-first",
+            "Study Gamer",
+            "🎮",
+            `You completed ${gameName} and earned +${rewardXp} XP.`,
+            "toast"
+          );
 
-        showToast(
-          "Study Game Complete",
-          `Score ${score}/${total}. +${rewardXp} XP · +${coins} coins`,
-          "🎮"
-        );
-      }}
-    />
-  );
-}
+          showToast(
+            "Study Game Complete",
+            `Score ${score}/${total}. +${rewardXp} XP · +${coins} coins`,
+            "🎮"
+          );
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`student-os-root min-h-screen flex transition-colors duration-500 overflow-x-hidden ${appBg}`}>
