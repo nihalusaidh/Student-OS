@@ -99,7 +99,11 @@ export default function ArcheryGame({
 
   const [isTouchDevice, setIsTouchDevice] = useState(() => {
     if (typeof window === "undefined") return false;
-    return Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const touchPoints = navigator.maxTouchPoints > 0;
+    const phoneUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    const smallLandscape = window.innerWidth > window.innerHeight && window.innerHeight <= 620;
+    return Boolean(coarse || touchPoints || phoneUA || smallLandscape);
   });
 
   const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
@@ -115,8 +119,12 @@ export default function ArcheryGame({
   useEffect(() => {
     const onResize = () => {
       const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
-      setIsTouchDevice(Boolean(coarse));
-      setIsPortraitMobile(Boolean(coarse && window.innerHeight > window.innerWidth));
+      const touchPoints = navigator.maxTouchPoints > 0;
+      const phoneUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+      const smallLandscape = window.innerWidth > window.innerHeight && window.innerHeight <= 620;
+      const mobileLike = Boolean(coarse || touchPoints || phoneUA || smallLandscape);
+      setIsTouchDevice(mobileLike);
+      setIsPortraitMobile(Boolean(mobileLike && window.innerHeight > window.innerWidth));
     };
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
@@ -504,36 +512,42 @@ export default function ArcheryGame({
       createObstacles() {
         this.obstacles.forEach((item) => item.destroy());
         this.obstacles = [];
+        // Obstacles become harder after every correct answer.
+        // On mobile landscape they are placed in the visible middle lane,
+        // away from the bow and away from answer targets.
         const baseCount = selectedMapIndex === 0 ? 1 : selectedMapIndex + 1;
-        const count = Math.min(7, baseCount + Math.floor(current / 2));
+        const count = Math.min(8, baseCount + current);
         for (let i = 0; i < count; i++) {
-          const x = Phaser.Math.Between(420, GAME_W - 430);
-          const y = Phaser.Math.Between(115, GAME_H - 165);
+          const x = Phaser.Math.Between(430, GAME_W - 520);
+          const y = Phaser.Math.Between(150, GAME_H - 190);
           let obstacle;
           const type = map.obstacle || "log";
           if (type === "bird") {
-            obstacle = this.add.container(x, y).setDepth(60);
+            obstacle = this.add.container(x, y).setDepth(82);
             obstacle.add(this.add.text(0, 0, "🦅", { fontSize: "46px" }).setOrigin(0.5));
             obstacle.kind = "bird";
             obstacle.speedX = Phaser.Math.Between(65, 115) * (i % 2 ? -1 : 1);
           } else if (type === "pillar") {
-            obstacle = this.add.container(x, y).setDepth(58);
+            obstacle = this.add.container(x, y).setDepth(82);
             obstacle.add(this.add.rectangle(0, 0, 34, Phaser.Math.Between(120, 210), 0x78716c, 0.95));
             obstacle.add(this.add.rectangle(0, 0, 46, 22, 0xa8a29e, 0.95));
             obstacle.kind = "pillar";
             obstacle.speedX = 0;
           } else if (type === "fire") {
-            obstacle = this.add.container(x, y).setDepth(60);
+            obstacle = this.add.container(x, y).setDepth(82);
             obstacle.add(this.add.circle(0, 0, 30, 0xef4444, 0.25));
             obstacle.add(this.add.text(0, 0, "🔥", { fontSize: "48px" }).setOrigin(0.5));
             obstacle.kind = "fire";
             obstacle.speedX = Phaser.Math.Between(35, 85) * (i % 2 ? -1 : 1);
           } else {
-            obstacle = this.add.container(x, y).setDepth(58);
-            obstacle.add(this.add.rectangle(0, 0, 34, 130, 0x78350f, 1));
-            obstacle.add(this.add.rectangle(0, -70, 46, 18, 0x92400e, 1));
+            obstacle = this.add.container(x, y).setDepth(82);
+            obstacle.add(this.add.rectangle(0, 0, 40, 150, 0x78350f, 1));
+            obstacle.add(this.add.rectangle(0, -82, 58, 20, 0xfacc15, 1));
+            obstacle.add(this.add.rectangle(0, 82, 58, 20, 0xfacc15, 1));
+            obstacle.add(this.add.text(0, 0, "🪵", { fontSize: "44px" }).setOrigin(0.5));
+            obstacle.add(this.add.text(0, -112, "⚠", { fontSize: "24px" }).setOrigin(0.5));
             obstacle.kind = "log";
-            obstacle.speedX = Phaser.Math.Between(25, 55) * (i % 2 ? -1 : 1);
+            obstacle.speedX = Phaser.Math.Between(35, 72) * (i % 2 ? -1 : 1);
           }
           obstacle.baseY = y;
           obstacle.phase = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -1017,18 +1031,21 @@ export default function ArcheryGame({
 
 
   const MobileLandscapeHud = () => (
-    <div className="pointer-events-none fixed inset-x-0 top-1 z-[10000] px-3 text-center text-white">
-      <div className="mx-auto max-w-[88vw] text-[13px] font-black leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
-        Q{hud.current}/{hud.total}. {hud.question}
+    <>
+      {/* Mobile landscape: text only, no card/background, so it will not cover the game. */}
+      <div className="pointer-events-none fixed left-2 top-1 z-[10000] max-w-[58vw] text-white">
+        <div className="truncate text-[11px] font-black leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+          Q{hud.current}/{hud.total}. {hud.question}
+        </div>
       </div>
-      <div className="mt-1 flex justify-center gap-3 text-[11px] font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+
+      <div className="pointer-events-none fixed bottom-1 left-2 z-[10000] flex max-w-[70vw] gap-2 text-[10px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
         <span>Score {hud.score}</span>
         <span className="text-yellow-200">Combo {hud.combo}</span>
         <span className="text-cyan-200">🌬 {hud.wind > 0 ? "→" : hud.wind < 0 ? "←" : "0"} {Math.abs(hud.wind)}</span>
-        <span className="text-red-200">Boss {hud.bossHp}</span>
         <span className="text-orange-200">Obs {hud.obstacles}</span>
       </div>
-    </div>
+    </>
   );
 
   const RotateLandscapeScreen = () => (
@@ -1041,11 +1058,16 @@ export default function ArcheryGame({
     </div>
   );
 
+  const forceMobileLandscapeHud =
+    typeof window !== "undefined" &&
+    window.innerWidth > window.innerHeight &&
+    window.innerHeight <= 620;
+
   if (!mapSelected) return <MapSelectScreen />;
 
   if (isPortraitMobile) return <RotateLandscapeScreen />;
 
-  if (isTouchDevice) {
+  if (isTouchDevice || forceMobileLandscapeHud) {
     return (
       <div
         className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 text-white"
