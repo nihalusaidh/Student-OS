@@ -18,6 +18,14 @@ import Phaser from "phaser";
  * 10. Growth system: Tiny Fish -> Small Fish -> Medium Fish -> Big Fish -> Giant Fish -> Ocean Legend.
  */
 
+const FISH_GAME_MAPS = [
+  { name: "Coral Reef", emoji: "🪸", top: 0x0891b2, mid: 0x0e7490, bottom: 0x164e63, sand: 0xc08457, decor: ["🪸", "🐚", "🌿", "🪨"], predatorCount: 5, rewardBoost: 1 },
+  { name: "Deep Ocean", emoji: "🌌", top: 0x0f172a, mid: 0x164e63, bottom: 0x020617, sand: 0x334155, decor: ["🪼", "🫧", "🪨", "🐚"], predatorCount: 7, rewardBoost: 1.15 },
+  { name: "Shipwreck Bay", emoji: "⚓", top: 0x0369a1, mid: 0x0f766e, bottom: 0x1e293b, sand: 0xa16207, decor: ["⚓", "🪙", "🪸", "🐚"], predatorCount: 7, rewardBoost: 1.25 },
+  { name: "Ice Ocean", emoji: "❄️", top: 0x7dd3fc, mid: 0x0284c7, bottom: 0x0f172a, sand: 0xe0f2fe, decor: ["❄️", "🧊", "🫧", "🐚"], predatorCount: 8, rewardBoost: 1.35 },
+  { name: "Volcano Sea", emoji: "🌋", top: 0x7f1d1d, mid: 0x0f172a, bottom: 0x020617, sand: 0x451a03, decor: ["🌋", "🔥", "🪨", "🫧"], predatorCount: 9, rewardBoost: 1.5 },
+];
+
 export default function FishGame({
   questions = [],
   topic = "Study Topic",
@@ -30,7 +38,11 @@ export default function FishGame({
   const joystickRef = useRef({ x: 0, y: 0, active: false });
   const miniMapRef = useRef(null);
 
-  const [loading, setLoading] = useState(true);
+  const [selectedMapIndex, setSelectedMapIndex] = useState(0);
+  const [mapSelected, setMapSelected] = useState(false);
+  const selectedMap = FISH_GAME_MAPS[selectedMapIndex] || FISH_GAME_MAPS[0];
+
+  const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Loading ocean...");
   const [hud, setHud] = useState({
     question: "Loading...",
@@ -71,6 +83,8 @@ export default function FishGame({
   }, [onReward]);
 
   useEffect(() => {
+    if (!mapSelected) return;
+
     const fallbackQuestions = [
       { question: `Best action to master ${topic}?`, answer: "Practice", options: ["Practice", "Skip", "Guess", "Forget"] },
       { question: `After studying ${topic}, do a?`, answer: "Quiz", options: ["Quiz", "Nap", "Scroll", "Skip"] },
@@ -86,68 +100,12 @@ export default function FishGame({
 
     if (!gameWrapRef.current || gameRef.current) return;
 
-    const GAME_W = 1280;
-    const GAME_H = 720;
-    const WORLD_W = 3400;
-    const WORLD_H = 1900;
+    const GAME_W = isPortraitMobile ? 960 : 1280;
+    const GAME_H = isPortraitMobile ? 540 : 720;
+    const WORLD_W = isPortraitMobile ? 2400 : 3400;
+    const WORLD_H = isPortraitMobile ? 1350 : 1900;
 
-    const maps = [
-      {
-        name: "Coral Reef",
-        emoji: "🪸",
-        top: 0x0891b2,
-        mid: 0x0e7490,
-        bottom: 0x164e63,
-        sand: 0xc08457,
-        decor: ["🪸", "🐚", "🌿", "🪨"],
-        predatorCount: 5,
-        rewardBoost: 1,
-      },
-      {
-        name: "Deep Ocean",
-        emoji: "🌌",
-        top: 0x0f172a,
-        mid: 0x164e63,
-        bottom: 0x020617,
-        sand: 0x334155,
-        decor: ["🪼", "🫧", "🪨", "🐚"],
-        predatorCount: 7,
-        rewardBoost: 1.15,
-      },
-      {
-        name: "Shipwreck Bay",
-        emoji: "⚓",
-        top: 0x0369a1,
-        mid: 0x0f766e,
-        bottom: 0x1e293b,
-        sand: 0xa16207,
-        decor: ["⚓", "🪙", "🪸", "🐚"],
-        predatorCount: 7,
-        rewardBoost: 1.25,
-      },
-      {
-        name: "Ice Ocean",
-        emoji: "❄️",
-        top: 0x7dd3fc,
-        mid: 0x0284c7,
-        bottom: 0x0f172a,
-        sand: 0xe0f2fe,
-        decor: ["❄️", "🧊", "🫧", "🐚"],
-        predatorCount: 8,
-        rewardBoost: 1.35,
-      },
-      {
-        name: "Volcano Sea",
-        emoji: "🌋",
-        top: 0x7f1d1d,
-        mid: 0x0f172a,
-        bottom: 0x020617,
-        sand: 0x451a03,
-        decor: ["🌋", "🔥", "🪨", "🫧"],
-        predatorCount: 9,
-        rewardBoost: 1.5,
-      },
-    ];
+    const maps = FISH_GAME_MAPS;
 
     const correctColors = [0xfacc15, 0x22c55e, 0xef4444, 0xa855f7, 0xf97316, 0x06b6d4, 0xec4899, 0x84cc16];
     const wrongColors = [0x38bdf8, 0x22c55e, 0xa855f7, 0xf97316, 0xec4899, 0x14b8a6, 0x818cf8];
@@ -162,7 +120,7 @@ export default function FishGame({
     let ready = false;
     let invincible = false;
     let speedBoostUntil = 0;
-    let currentMapIndex = 0;
+    let currentMapIndex = selectedMapIndex;
     let rareSpawnCount = 0;
 
     const getGrowthName = () => {
@@ -234,14 +192,13 @@ export default function FishGame({
         this.createRareFishTimer();
 
         this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
-        this.cameras.main.setZoom(isPortraitMobile ? 0.95 : 1);
 
         if (!isPortraitMobile) {
           this.input.on("pointermove", (p) => this.setTargetFromPointer(p));
           this.input.on("pointerdown", (p) => this.setTargetFromPointer(p));
         }
 
-        this.time.delayedCall(1100, () => {
+        this.time.delayedCall(isPortraitMobile ? 450 : 700, () => {
           ready = true;
           setLoading(false);
           syncHud(isPortraitMobile ? "Joystick ready. Chase ⭐ answer fish." : "Move with mouse or touch. Chase ⭐ answer fish.");
@@ -306,7 +263,7 @@ export default function FishGame({
         this.mapLayers.push(bg);
 
         const floor = this.add.graphics().setDepth(2);
-        for (let i = 0; i < 90; i++) {
+        for (let i = 0; i < (isPortraitMobile ? 38 : 90); i++) {
           floor.fillStyle(i % 2 ? map.sand : 0x1f2937, Phaser.Math.FloatBetween(0.25, 0.65));
           floor.fillEllipse(
             Phaser.Math.Between(0, WORLD_W),
@@ -317,7 +274,7 @@ export default function FishGame({
         }
         this.mapLayers.push(floor);
 
-        for (let i = 0; i < 90; i++) {
+        for (let i = 0; i < (isPortraitMobile ? 38 : 90); i++) {
           const b = this.add.circle(
             Phaser.Math.Between(0, WORLD_W),
             Phaser.Math.Between(0, WORLD_H),
@@ -365,7 +322,7 @@ export default function FishGame({
         }
 
         if (map.name === "Volcano Sea") {
-          for (let i = 0; i < 8; i++) {
+          for (let i = 0; i < (isPortraitMobile ? 4 : 8); i++) {
             const lava = this.add.circle(Phaser.Math.Between(120, WORLD_W - 120), WORLD_H - Phaser.Math.Between(60, 180), Phaser.Math.Between(16, 42), 0xef4444, 0.55).setDepth(4);
             this.mapDecor.push(lava);
             this.tweens.add({ targets: lava, alpha: 0.15, scaleX: 1.3, scaleY: 1.3, duration: 800, yoyo: true, repeat: -1 });
@@ -483,7 +440,7 @@ export default function FishGame({
 
       createPredators() {
         const map = maps[currentMapIndex] || maps[0];
-        for (let i = 0; i < map.predatorCount; i++) {
+        for (let i = 0; i < Math.max(3, map.predatorCount - (isPortraitMobile ? 2 : 0)); i++) {
           const p = this.makeRealFish(
             Phaser.Math.Between(560, WORLD_W - 150),
             Phaser.Math.Between(160, WORLD_H - 190),
@@ -523,7 +480,7 @@ export default function FishGame({
       }
 
       createCoins() {
-        for (let i = 0; i < 22; i++) {
+        for (let i = 0; i < (isPortraitMobile ? 10 : 22); i++) {
           const c = this.add.container(Phaser.Math.Between(260, WORLD_W - 170), Phaser.Math.Between(150, WORLD_H - 170)).setDepth(35);
           c.add(this.add.circle(0, 0, 34, 0xfacc15, 0.14));
           c.add(this.add.circle(0, 0, 18, 0xfacc15));
@@ -608,12 +565,6 @@ export default function FishGame({
 
       createQuestion() {
         if (current >= safeQuestions.length) return this.endGame("Ocean level complete!");
-
-        const neededMap = Math.min(maps.length - 1, Math.floor(current / 2));
-        if (neededMap !== currentMapIndex) {
-          currentMapIndex = neededMap;
-          this.createMap(currentMapIndex);
-        }
 
         this.answerFish.forEach((f) => f.destroy());
         this.labels.forEach((l) => l.destroy());
@@ -1000,7 +951,7 @@ export default function FishGame({
     }
 
     const config = {
-      type: Phaser.AUTO,
+      type: isPortraitMobile ? Phaser.CANVAS : Phaser.AUTO,
       parent: gameWrapRef.current,
       width: GAME_W,
       height: GAME_H,
@@ -1017,7 +968,7 @@ export default function FishGame({
         height: GAME_H,
       },
       render: {
-        antialias: true,
+        antialias: !isPortraitMobile,
         pixelArt: false,
         powerPreference: "high-performance",
       },
@@ -1032,7 +983,7 @@ export default function FishGame({
         gameRef.current = null;
       }
     };
-  }, [questions, topic, isPortraitMobile]);
+  }, [questions, topic, isPortraitMobile, mapSelected, selectedMapIndex]);
 
   const healthRatio = Math.max(0, Math.min(1, hud.health / 100));
 
@@ -1084,6 +1035,50 @@ export default function FishGame({
       <div className="mt-4 text-xs font-semibold text-slate-400">Student OS is preparing your map, fish, questions, and rewards.</div>
     </div>
   );
+
+  const MapSelectScreen = () => (
+    <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 p-4 text-white">
+      <div className="mx-auto flex h-full max-w-6xl flex-col justify-center">
+        <div className="mb-4 text-center">
+          <div className="text-4xl font-black">🌊 Choose Your Ocean Map</div>
+          <div className="mt-2 text-sm font-bold text-cyan-200">Map will stay the same for the full round. It will not change after correct answers.</div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {FISH_GAME_MAPS.map((map, index) => (
+            <button
+              key={map.name}
+              onClick={() => setSelectedMapIndex(index)}
+              className={`rounded-3xl border p-4 text-left shadow-2xl transition active:scale-95 ${
+                selectedMapIndex === index
+                  ? "border-cyan-300 bg-cyan-400/20 shadow-cyan-500/20"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
+            >
+              <div className="text-5xl">{map.emoji}</div>
+              <div className="mt-3 text-lg font-black">{map.name}</div>
+              <div className="mt-2 text-xs font-bold text-slate-300">
+                Predators: {map.predatorCount} · Reward x{map.rewardBoost}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => {
+            setLoading(true);
+            setLoadingText(`${selectedMap.emoji} Loading ${selectedMap.name}...`);
+            setMapSelected(true);
+          }}
+          className="mx-auto mt-6 rounded-2xl bg-cyan-400 px-8 py-4 text-lg font-black text-slate-950 shadow-2xl active:scale-95"
+        >
+          Start {selectedMap.emoji} {selectedMap.name}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (!mapSelected) return <MapSelectScreen />;
 
   const HudCard = ({ mobile = false }) => (
     <div
