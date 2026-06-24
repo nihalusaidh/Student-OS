@@ -1026,61 +1026,60 @@ export default function FishGame({
     </div>
   );
 
+  const startSelectedMap = (index) => {
+    const map = FISH_GAME_MAPS[index] || FISH_GAME_MAPS[0];
+    setSelectedMapIndex(index);
+    setLoading(true);
+    setLoadingText(`${map.emoji} Loading ${map.name}...`);
+    setMapSelected(true);
+  };
+
   const MapSelectScreen = () => (
     <div
       className="fixed inset-0 z-[99999] bg-slate-950 text-white"
       style={{
         width: "100dvw",
-        height: "100dvh",
-        overflowY: "auto",
-        overflowX: "hidden",
-        WebkitOverflowScrolling: "touch",
-        touchAction: "pan-y",
-        overscrollBehaviorY: "contain",
-        paddingBottom: "calc(env(safe-area-inset-bottom) + 96px)",
+        height: "100svh",
+        overflow: "hidden",
       }}
     >
-      <div className="mx-auto min-h-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">
-        <div className="mb-5 text-center">
-          <div className="text-3xl font-black sm:text-4xl">🌊 Choose Your Ocean Map</div>
-          <div className="mx-auto mt-2 max-w-2xl text-sm font-bold text-cyan-200">
-            Select a map, then press Start. The map stays the same for the full round.
+      <div
+        className="h-full overflow-y-scroll px-4 pb-10 pt-6 sm:px-6"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
+          overscrollBehavior: "auto",
+        }}
+      >
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-5 text-center">
+            <div className="text-3xl font-black sm:text-4xl">🌊 Choose Your Ocean Map</div>
+            <div className="mx-auto mt-2 max-w-2xl text-sm font-bold text-cyan-200">
+              Tap any map to start. The map stays the same for the full round.
+            </div>
           </div>
-        </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {FISH_GAME_MAPS.map((map, index) => (
-            <button
-              key={map.name}
-              type="button"
-              onClick={() => setSelectedMapIndex(index)}
-              className={`min-h-[150px] rounded-3xl border p-5 text-left shadow-2xl transition active:scale-95 sm:min-h-[190px] ${
-                selectedMapIndex === index
-                  ? "border-cyan-300 bg-cyan-400/20 shadow-cyan-500/20"
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
-              }`}
-            >
-              <div className="text-5xl sm:text-6xl">{map.emoji}</div>
-              <div className="mt-4 text-2xl font-black sm:text-xl">{map.name}</div>
-              <div className="mt-3 text-sm font-bold text-slate-300 sm:text-xs">
-                Predators: {map.predatorCount} · Reward x{map.rewardBoost}
-              </div>
-            </button>
-          ))}
-        </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {FISH_GAME_MAPS.map((map, index) => (
+              <button
+                key={map.name}
+                type="button"
+                onClick={() => startSelectedMap(index)}
+                className="min-h-[130px] rounded-3xl border border-white/10 bg-white/5 p-5 text-left shadow-2xl transition-colors hover:bg-white/10 active:bg-cyan-400/20 sm:min-h-[190px]"
+              >
+                <div className="text-5xl sm:text-6xl">{map.emoji}</div>
+                <div className="mt-4 text-2xl font-black sm:text-xl">{map.name}</div>
+                <div className="mt-3 text-sm font-bold text-slate-300 sm:text-xs">
+                  Predators: {map.predatorCount} · Reward x{map.rewardBoost}
+                </div>
+                <div className="mt-4 inline-flex rounded-full bg-cyan-400 px-4 py-2 text-sm font-black text-slate-950">
+                  Start Map
+                </div>
+              </button>
+            ))}
+          </div>
 
-        <div className="sticky bottom-0 z-[100000] -mx-4 mt-6 border-t border-cyan-400/20 bg-slate-950/95 px-4 py-4 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:p-0">
-          <button
-            type="button"
-            onClick={() => {
-              setLoading(true);
-              setLoadingText(`${selectedMap.emoji} Loading ${selectedMap.name}...`);
-              setMapSelected(true);
-            }}
-            className="mx-auto block w-full rounded-2xl bg-cyan-400 px-8 py-4 text-lg font-black text-slate-950 shadow-2xl active:scale-95 sm:w-auto"
-          >
-            Start {selectedMap.emoji} {selectedMap.name}
-          </button>
+          <div className="h-16" />
         </div>
       </div>
     </div>
