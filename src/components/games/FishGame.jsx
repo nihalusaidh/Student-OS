@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Phaser from "phaser";
 
 /**
- * FishGame V6.6 - Mobile Reels Layout FIXED
+ * FishGame V7 - Student OS Mobile Safe Ocean
  * Path: src/components/games/FishGame.jsx
  *
- * Fixes:
+ * Best version fixes:
  * 1. EXIT button is React DOM, so it works on laptop and mobile.
  * 2. Mobile portrait:
  *    Top = question + score + health + minimap + exit
@@ -41,10 +41,27 @@ export default function FishGame({
     ended: false,
   });
 
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === "undefined" ? 1024 : window.innerWidth,
+    height: typeof window === "undefined" ? 768 : window.innerHeight,
+  }));
+
   const isPortraitMobile = useMemo(() => {
     if (typeof window === "undefined") return false;
     const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
-    return Boolean(coarse && window.innerHeight > window.innerWidth);
+    return Boolean(coarse && viewport.height > viewport.width);
+  }, [viewport.height, viewport.width]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
   }, []);
 
   useEffect(() => {
@@ -70,7 +87,11 @@ export default function FishGame({
     const parent = gameWrapRef.current;
     const rect = parent.getBoundingClientRect();
     const GAME_W = Math.max(360, Math.floor(rect.width || window.innerWidth || 960));
-    const GAME_H = Math.max(220, Math.floor(rect.height || 540));
+    // Portrait mobile middle strip is intentionally short and wide.
+    // This prevents the ocean from becoming zoomed/cropped like portrait fullscreen.
+    const GAME_H = isPortraitMobile
+      ? Math.max(190, Math.min(360, Math.floor(rect.height || GAME_W * 0.5625)))
+      : Math.max(420, Math.floor(rect.height || 540));
 
     const WORLD_W = 3000;
     const WORLD_H = 1650;
@@ -104,7 +125,7 @@ export default function FishGame({
 
     class OceanScene extends Phaser.Scene {
       constructor() {
-        super("FishGameV66Reels");
+        super("FishGameV7StudentOSOcean");
         this.player = null;
         this.answerFish = [];
         this.predators = [];
@@ -830,7 +851,8 @@ export default function FishGame({
             coins,
             score,
             total: safeQuestions.length,
-            mode: "fish-v6-6-reels-fixed",
+            mode: "fish",
+            gameName: "Fish Feeding",
           });
         }
       }
@@ -922,7 +944,7 @@ export default function FishGame({
       <div
         className="fixed inset-0 z-[99999] grid bg-slate-950 text-white"
         style={{
-          gridTemplateRows: "28dvh auto 28dvh",
+          gridTemplateRows: "minmax(190px, 27dvh) minmax(190px, 56.25dvw) 1fr",
           width: "100dvw",
           height: "100dvh",
           overflow: "hidden",
@@ -930,10 +952,10 @@ export default function FishGame({
           overscrollBehavior: "none",
         }}
       >
-        <div className="relative border-b border-cyan-400/30 bg-slate-950 px-4 pt-7">
+        <div className="relative overflow-hidden border-b border-cyan-400/30 bg-slate-950 px-4 pt-[max(16px,env(safe-area-inset-top))]">
           <button
             onClick={onExit}
-            className="absolute right-4 top-7 z-[100001] rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white active:scale-95"
+            className="absolute right-4 top-[max(16px,env(safe-area-inset-top))] z-[100001] rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white shadow-lg active:scale-95"
           >
             EXIT
           </button>
@@ -969,13 +991,14 @@ export default function FishGame({
           </div>
         </div>
 
-        <div ref={gameWrapRef} className="relative w-full overflow-hidden bg-slate-900" />
+        <div ref={gameWrapRef} className="relative h-full w-full overflow-hidden bg-slate-900" />
 
         <div
           className="relative flex flex-col items-center justify-center border-t border-cyan-400/30 bg-slate-950"
           onTouchStart={handleJoyMove}
           onTouchMove={handleJoyMove}
           onTouchEnd={stopJoystick}
+          onTouchCancel={stopJoystick}
           onMouseDown={handleJoyMove}
           onMouseMove={(e) => {
             if (e.buttons === 1) handleJoyMove(e);
