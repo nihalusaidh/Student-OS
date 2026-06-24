@@ -263,7 +263,7 @@ export default function FishGame({
         this.mapLayers.push(bg);
 
         const floor = this.add.graphics().setDepth(2);
-        for (let i = 0; i < (isPortraitMobile ? 38 : 90); i++) {
+        for (let i = 0; i < (isPortraitMobile ? 18 : 90); i++) {
           floor.fillStyle(i % 2 ? map.sand : 0x1f2937, Phaser.Math.FloatBetween(0.25, 0.65));
           floor.fillEllipse(
             Phaser.Math.Between(0, WORLD_W),
@@ -274,7 +274,7 @@ export default function FishGame({
         }
         this.mapLayers.push(floor);
 
-        for (let i = 0; i < (isPortraitMobile ? 38 : 90); i++) {
+        for (let i = 0; i < (isPortraitMobile ? 18 : 90); i++) {
           const b = this.add.circle(
             Phaser.Math.Between(0, WORLD_W),
             Phaser.Math.Between(0, WORLD_H),
@@ -297,7 +297,7 @@ export default function FishGame({
           });
         }
 
-        for (let i = 0; i < 52; i++) {
+        for (let i = 0; i < (isPortraitMobile ? 14 : 52); i++) {
           const deco = this.add.text(
             Phaser.Math.Between(0, WORLD_W),
             Phaser.Math.Between(WORLD_H - 180, WORLD_H - 70),
@@ -305,7 +305,7 @@ export default function FishGame({
             { fontSize: Phaser.Math.Between(30, 62) + "px" }
           ).setDepth(5);
           this.mapDecor.push(deco);
-          if (i < 18) {
+          if (i < (isPortraitMobile ? 5 : 18)) {
             this.tweens.add({
               targets: deco,
               angle: Phaser.Math.Between(-8, 8),
@@ -348,64 +348,50 @@ export default function FishGame({
           icon = "",
           type = "fish",
           alpha = 1,
+          emoji = "",
         } = cfg;
 
         const fish = this.add.container(x, y).setAlpha(alpha);
 
-        const shadow = this.add.ellipse(2 * size, 20 * size, 112 * size, 60 * size, 0x000000, 0.12);
-        const glow = this.add.circle(0, 0, 72 * size, color, 0.1);
+        const species = emoji || (
+          type === "shark" ? "🦈" :
+          type === "dolphin" ? "🐬" :
+          type === "puffer" ? "🐡" :
+          type === "rare" ? "🐠" :
+          ["🐟", "🐠", "🐡"][Phaser.Math.Between(0, 2)]
+        );
 
-        let tail;
-        let body;
-        let head;
-        let topFin;
-        let bottomFin;
+        const shadow = this.add.ellipse(0, 34 * size, 118 * size, 34 * size, 0x000000, 0.18);
+        const glow = this.add.circle(0, 0, 70 * size, color, type === "shark" ? 0.06 : 0.14);
+        const body = this.add.text(0, 0, species, {
+          fontSize: `${Math.round((type === "shark" ? 82 : type === "dolphin" ? 76 : 70) * size)}px`,
+          fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Arial",
+        }).setOrigin(0.5);
 
-        if (type === "shark") {
-          tail = this.add.triangle(-74 * size, 0, 0, -34 * size, 0, 34 * size, -54 * size, 0, color);
-          body = this.add.ellipse(0, 0, 128 * size, 62 * size, color);
-          head = this.add.triangle(64 * size, 0, 0, -26 * size, 0, 26 * size, 40 * size, 0, color);
-          topFin = this.add.triangle(-8 * size, -30 * size, 0, -54 * size, 28 * size, -22 * size, -14 * size, -22 * size, Phaser.Display.Color.ValueToColor(color).darken(18).color);
-          bottomFin = this.add.triangle(-4 * size, 28 * size, 0, 44 * size, 34 * size, 22 * size, -8 * size, 22 * size, Phaser.Display.Color.ValueToColor(color).darken(22).color);
-        } else if (type === "dolphin") {
-          tail = this.add.triangle(-70 * size, 0, 0, -32 * size, 0, 32 * size, -52 * size, 0, color);
-          body = this.add.ellipse(0, 0, 132 * size, 54 * size, color);
-          head = this.add.ellipse(58 * size, -2 * size, 54 * size, 42 * size, color);
-          topFin = this.add.triangle(-2 * size, -26 * size, 0, -58 * size, 25 * size, -20 * size, -12 * size, -20 * size, Phaser.Display.Color.ValueToColor(color).darken(12).color);
-          bottomFin = this.add.triangle(12 * size, 22 * size, 0, 46 * size, 40 * size, 16 * size, 2 * size, 18 * size, Phaser.Display.Color.ValueToColor(color).darken(20).color);
-        } else {
-          tail = this.add.triangle(-64 * size, 0, 0, -34 * size, 0, 34 * size, -48 * size, 0, color);
-          body = this.add.ellipse(0, 0, 112 * size, 64 * size, color);
-          head = this.add.ellipse(34 * size, -2 * size, 58 * size, 56 * size, Phaser.Display.Color.ValueToColor(color).brighten(4).color);
-          topFin = this.add.triangle(-8 * size, -34 * size, 0, -58 * size, 30 * size, -22 * size, -16 * size, -23 * size, Phaser.Display.Color.ValueToColor(color).darken(15).color);
-          bottomFin = this.add.triangle(6 * size, 30 * size, 0, 50 * size, 38 * size, 22 * size, -6 * size, 22 * size, Phaser.Display.Color.ValueToColor(color).darken(20).color);
-        }
+        const shine = this.add.ellipse(10 * size, -18 * size, 58 * size, 18 * size, 0xffffff, 0.12);
+        const aura = this.add.circle(0, 0, 92 * size, accent, type === "rare" ? 0.16 : 0.04);
 
-        const belly = this.add.ellipse(12 * size, 15 * size, 64 * size, 26 * size, accent, 0.22);
-        const stripe1 = this.add.rectangle(-10 * size, 0, 8 * size, 56 * size, accent, type === "shark" ? 0.05 : 0.18).setAngle(14);
-        const stripe2 = this.add.rectangle(12 * size, 0, 7 * size, 52 * size, accent, type === "shark" ? 0.04 : 0.12).setAngle(14);
-        const highlight = this.add.ellipse(18 * size, -14 * size, 54 * size, 18 * size, 0xffffff, 0.18);
-        const eye = this.add.circle(42 * size, -15 * size, 8 * size, 0xffffff);
-        const pupil = this.add.circle(45 * size, -15 * size, 3.5 * size, 0x020617);
-
-        fish.add([shadow, glow, tail, bottomFin, body, head, topFin, belly, stripe1, stripe2, highlight, eye, pupil]);
+        fish.add([shadow, aura, glow, body, shine]);
 
         if (icon) {
-          fish.add(this.add.text(0, -55 * size, icon, { fontSize: 26 * size + "px" }).setOrigin(0.5));
+          fish.add(this.add.text(0, -64 * size, icon, {
+            fontSize: `${Math.round(26 * size)}px`,
+            fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Arial",
+          }).setOrigin(0.5));
         }
 
-        fish.tail = tail;
+        fish.tail = body;
         fish.glow = glow;
-        fish.setSize(130 * size, 72 * size);
+        fish.setSize(120 * size, 80 * size);
 
-        this.tweens.add({ targets: tail, scaleX: 1.34, duration: 145, yoyo: true, repeat: -1 });
-        this.tweens.add({ targets: [topFin, bottomFin], angle: "+=5", duration: 520, yoyo: true, repeat: -1 });
+        this.tweens.add({ targets: body, scaleX: 1.08, scaleY: 0.96, duration: 260, yoyo: true, repeat: -1 });
+        this.tweens.add({ targets: glow, alpha: type === "rare" ? 0.34 : 0.18, scaleX: 1.18, scaleY: 1.18, duration: 780, yoyo: true, repeat: -1 });
 
         return fish;
       }
 
       createBackgroundFish() {
-        for (let i = 0; i < 24; i++) {
+        for (let i = 0; i < (isPortraitMobile ? 7 : 24); i++) {
           const c = wrongColors[Phaser.Math.Between(0, wrongColors.length - 1)];
           const f = this.makeRealFish(
             Phaser.Math.Between(160, WORLD_W - 160),
@@ -431,6 +417,7 @@ export default function FishGame({
           color: 0xf97316,
           accent: 0xffffff,
           size: 1.05,
+          emoji: "🐠",
         });
         this.player.setDepth(90);
         this.physics.add.existing(this.player);
@@ -449,6 +436,7 @@ export default function FishGame({
               accent: 0xffffff,
               icon: "☠",
               type: i % 3 === 0 ? "shark" : "fish",
+              emoji: i % 3 === 0 ? "🦈" : "🐟",
               size: Phaser.Math.FloatBetween(1.0, 1.35),
             }
           );
@@ -467,6 +455,7 @@ export default function FishGame({
           accent: 0xffffff,
           icon: "🦈",
           type: "shark",
+          emoji: "🦈",
           size: 1.55,
         });
         bossShark.damage = 18 + currentMapIndex * 2;
@@ -595,6 +584,7 @@ export default function FishGame({
               accent: 0xffffff,
               icon: correct ? "⭐" : "",
               size: correct ? 1.14 : 0.98,
+              emoji: correct ? "🐠" : ["🐟", "🐡", "🐠"][i % 3],
             }
           );
 
@@ -1037,43 +1027,61 @@ export default function FishGame({
   );
 
   const MapSelectScreen = () => (
-    <div className="fixed inset-0 z-[99999] overflow-hidden bg-slate-950 p-4 text-white">
-      <div className="mx-auto flex h-full max-w-6xl flex-col justify-center">
-        <div className="mb-4 text-center">
-          <div className="text-4xl font-black">🌊 Choose Your Ocean Map</div>
-          <div className="mt-2 text-sm font-bold text-cyan-200">Map will stay the same for the full round. It will not change after correct answers.</div>
+    <div
+      className="fixed inset-0 z-[99999] bg-slate-950 text-white"
+      style={{
+        width: "100dvw",
+        height: "100dvh",
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
+        touchAction: "pan-y",
+        overscrollBehaviorY: "contain",
+        paddingBottom: "calc(env(safe-area-inset-bottom) + 96px)",
+      }}
+    >
+      <div className="mx-auto min-h-full max-w-6xl px-4 pb-24 pt-8 sm:px-6">
+        <div className="mb-5 text-center">
+          <div className="text-3xl font-black sm:text-4xl">🌊 Choose Your Ocean Map</div>
+          <div className="mx-auto mt-2 max-w-2xl text-sm font-bold text-cyan-200">
+            Select a map, then press Start. The map stays the same for the full round.
+          </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {FISH_GAME_MAPS.map((map, index) => (
             <button
               key={map.name}
+              type="button"
               onClick={() => setSelectedMapIndex(index)}
-              className={`rounded-3xl border p-4 text-left shadow-2xl transition active:scale-95 ${
+              className={`min-h-[150px] rounded-3xl border p-5 text-left shadow-2xl transition active:scale-95 sm:min-h-[190px] ${
                 selectedMapIndex === index
                   ? "border-cyan-300 bg-cyan-400/20 shadow-cyan-500/20"
                   : "border-white/10 bg-white/5 hover:bg-white/10"
               }`}
             >
-              <div className="text-5xl">{map.emoji}</div>
-              <div className="mt-3 text-lg font-black">{map.name}</div>
-              <div className="mt-2 text-xs font-bold text-slate-300">
+              <div className="text-5xl sm:text-6xl">{map.emoji}</div>
+              <div className="mt-4 text-2xl font-black sm:text-xl">{map.name}</div>
+              <div className="mt-3 text-sm font-bold text-slate-300 sm:text-xs">
                 Predators: {map.predatorCount} · Reward x{map.rewardBoost}
               </div>
             </button>
           ))}
         </div>
 
-        <button
-          onClick={() => {
-            setLoading(true);
-            setLoadingText(`${selectedMap.emoji} Loading ${selectedMap.name}...`);
-            setMapSelected(true);
-          }}
-          className="mx-auto mt-6 rounded-2xl bg-cyan-400 px-8 py-4 text-lg font-black text-slate-950 shadow-2xl active:scale-95"
-        >
-          Start {selectedMap.emoji} {selectedMap.name}
-        </button>
+        <div className="sticky bottom-0 z-[100000] -mx-4 mt-6 border-t border-cyan-400/20 bg-slate-950/95 px-4 py-4 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:p-0">
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setLoadingText(`${selectedMap.emoji} Loading ${selectedMap.name}...`);
+              setMapSelected(true);
+            }}
+            className="mx-auto block w-full rounded-2xl bg-cyan-400 px-8 py-4 text-lg font-black text-slate-950 shadow-2xl active:scale-95 sm:w-auto"
+          >
+            Start {selectedMap.emoji} {selectedMap.name}
+          </button>
+        </div>
       </div>
     </div>
   );
