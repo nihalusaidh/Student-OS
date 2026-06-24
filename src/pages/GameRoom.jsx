@@ -1,17 +1,16 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import ArcheryGame from "../components/games/ArcheryGame";
 import FishGame from "../components/games/FishGame";
 
 /**
- * GameRoom.jsx - Fixed Exit + Mobile Fullscreen Wrapper
  * Path: src/pages/GameRoom.jsx
  *
- * What this fixes:
- * 1. EXIT button always appears above Phaser canvas.
- * 2. EXIT clears old/stuck study game localStorage values.
- * 3. Mobile minimize/reopen will not keep trapping user in game.
- * 4. FishGame still handles portrait layout:
- *    top = question/score/map/exit, middle = horizontal ocean, bottom = joystick.
+ * Fixed:
+ * - Fish mode opens FishGame
+ * - Archery mode opens ArcheryGame
+ * - EXIT button always works above Phaser
+ * - Clears old stuck localStorage/sessionStorage game state
+ * - Browser back / Android back exits game room
  */
 
 export default function GameRoom({
@@ -21,32 +20,35 @@ export default function GameRoom({
   onExit,
   onReward,
 }) {
-  const hardExitGame = () => {
-    // Remove all possible old game-state keys from previous versions.
-    localStorage.removeItem("studyGameStarted");
-    localStorage.removeItem("studyGameMode");
-    localStorage.removeItem("studyGameQuestions");
-    localStorage.removeItem("studyGameCurrent");
-    localStorage.removeItem("studyGameScore");
+  const clearGameStorage = () => {
+    const keys = [
+      "studyGameStarted",
+      "studyGameMode",
+      "studyGameQuestions",
+      "studyGameCurrent",
+      "studyGameScore",
+      "studentOS_studyGameStarted",
+      "studentOS_studyGameMode",
+      "studentOS_studyGameQuestions",
+      "studentOS_studyGameCurrent",
+      "studentOS_studyGameScore",
+    ];
 
-    localStorage.removeItem("studentOS_studyGameStarted");
-    localStorage.removeItem("studentOS_studyGameMode");
-    localStorage.removeItem("studentOS_studyGameQuestions");
-    localStorage.removeItem("studentOS_studyGameCurrent");
-    localStorage.removeItem("studentOS_studyGameScore");
+    keys.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+  };
 
-    sessionStorage.removeItem("studyGameStarted");
-    sessionStorage.removeItem("studyGameMode");
-    sessionStorage.removeItem("studentOS_studyGameStarted");
-    sessionStorage.removeItem("studentOS_studyGameMode");
+  const hardExitGame = useCallback(() => {
+    clearGameStorage();
 
     if (typeof onExit === "function") {
       onExit();
     }
-  };
+  }, [onExit]);
 
   useEffect(() => {
-    // Make Android back button / browser back leave the game instead of trapping.
     window.history.pushState({ studentOSGameRoom: true }, "");
 
     const handlePopState = () => {
@@ -64,8 +66,7 @@ export default function GameRoom({
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("keydown", handleKeyDown);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hardExitGame]);
 
   const commonProps = {
     questions,
@@ -88,7 +89,6 @@ export default function GameRoom({
         overscrollBehavior: "none",
       }}
     >
-      {/* This is a REAL React button, not Phaser. It stays clickable above the game. */}
       <button
         type="button"
         onClick={hardExitGame}
@@ -106,7 +106,9 @@ export default function GameRoom({
           <div className="max-w-xl rounded-3xl border border-slate-700 bg-slate-900 p-8 text-center shadow-2xl">
             <div className="text-6xl">🎮</div>
             <h1 className="mt-4 text-3xl font-black">Game Room</h1>
-            <p className="mt-2 text-slate-400">This game mode is coming next.</p>
+            <p className="mt-2 text-slate-400">
+              This game mode is coming next.
+            </p>
             <button
               type="button"
               onClick={hardExitGame}
